@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 130" width="360" height="130" role="img" aria-labelledby="title desc">
+<title>Boka Loka Lanches</title>
+<desc>Logo Boka Loka Lanches - hambúrguer amarelo sobre fundo vermelho</desc>
+<rect width="360" height="130" rx="18" fill="#CF0C19"/>
+<!-- Ícone hambúrguer amarelo -->
+<g transform="translate(16,13)">
+  <circle cx="52" cy="52" r="52" fill="#FFC300"/>
+  <!-- camada ondulada 1 -->
+  <path d="M 9 46 C 16 42, 24 50, 32 46 C 40 42, 48 50, 56 46 C 64 42, 72 50, 80 46 C 86 43, 91 43, 96 46 L 96 54 C 91 58, 86 51, 80 54 C 72 58, 64 50, 56 54 C 48 58, 40 50, 32 54 C 24 58, 16 50, 9 54 Z" fill="#CF0C19"/>
+  <!-- camada ondulada 2 -->
+  <path d="M 9 60 C 16 56, 24 64, 32 60 C 40 56, 48 64, 56 60 C 64 56, 72 64, 80 60 C 86 57, 91 57, 96 60 L 96 68 C 91 72, 86 65, 80 68 C 72 72, 64 64, 56 68 C 48 72, 40 64, 32 68 C 24 72, 16 64, 9 68 Z" fill="#CF0C19"/>
+  <!-- brilho sutil pão -->
+  <ellipse cx="52" cy="28" rx="22" ry="6" fill="white" opacity="0.12"/>
+</g>
+<!-- Texto -->
+<g font-family="Outfit, 'Anton', 'Bebas Neue', Inter, sans-serif" >
+  <text x="132" y="58" fill="white" font-weight="900" font-size="56" letter-spacing="-2.2" style="paint-order: stroke; stroke: rgba(0,0,0,0.08); stroke-width: 0.6px;">BOKA</text>
+  <text x="132" y="104" fill="white" font-weight="900" font-size="56" letter-spacing="-2.2" style="paint-order: stroke; stroke: rgba(0,0,0,0.08); stroke-width: 0.6px;">LOKA</text>
+  <text x="134" y="123" fill="white" font-weight="600" font-size="14.5" letter-spacing="6.2" opacity="0.98">lanches</text>
+</g>
+</svg>

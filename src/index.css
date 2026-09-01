@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --color-boka-red: #e30613;
+  --color-boka-red-dark: #b8050f;
+  --color-boka-yellow: #ffc300;
+  --color-boka-yellow-dark: #ffb700;
+  --color-boka-black: #0f0f0f;
+  --color-boka-cream: #fffbf0;
+  --color-boka-cream-dark: #fff6d6;
+  --font-display: "Anton", "Bebas Neue", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-outfit: "Outfit", sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #e30613 #fffbf0;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+body {
+  background: #fffbf0;
+  color: #111111;
+  font-family: "Inter", system-ui, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #fffbf0;
+}
+::-webkit-scrollbar-thumb {
+  background: #e30613;
+  border-radius: 999px;
+}
+
+.text-stroke {
+  -webkit-text-stroke: 1px rgba(0,0,0,0.08);
+}
+.glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.glass-white {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255,255,255,0.78);
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes floatA { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
+@keyframes floatB { 0%,100% { transform: translateY(0) } 50% { transform: translateY(8px) } }
+@keyframes floatC { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }

@@ -1,0 +1,220 @@
+// SQLite no navegador via sql.js — 100% grátis, sem servidor, persiste no localStorage
+// Banco SQL real (SQLite) rodando no browser, salvo como base64 em localStorage:boka_sql_db
+import initSqlJs from "sql.js";
+import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS, DEFAULT_ADMINS, DEFAULT_DISCOUNTS } from "./defaultData";
+
+const STORAGE_KEY = "boka_sql_db";
+let SQL = null;
+let db = null;
+
+async function getSql() {
+  if (SQL) return SQL;
+  SQL = await initSqlJs({
+    locateFile: (file) => `https://sql.js.org/dist/${file}`,
+  });
+  return SQL;
+}
+
+function saveDb() {
+  if (!db) return;
+  const data = db.export();
+  const b64 = btoa(String.fromCharCode(...data));
+  localStorage.setItem(STORAGE_KEY, b64);
+}
+
+async function getDb() {
+  if (db) return db;
+  const SQL = await getSql();
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    try {
+      const buf = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
+      db = new SQL.Database(buf);
+      return db;
+    } catch {}
+  }
+  db = new SQL.Database();
+  // cria tabelas
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      category TEXT,
+      image TEXT,
+      badge TEXT,
+      popular INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      address TEXT,
+      gmapsLink TEXT,
+      phoneDisplay TEXT,
+      phoneTel TEXT,
+      whatsappNumber TEXT,
+      instagramUrl TEXT,
+      ifoodUrl TEXT,
+      logo TEXT,
+      openHour INTEGER,
+      closeHour INTEGER,
+      heroTitle TEXT,
+      heroSubtitle TEXT
+    );
+    CREATE TABLE IF NOT EXISTS admins (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT,
+      role TEXT DEFAULT 'admin',
+      createdAt TEXT
+    );
+    CREATE TABLE IF NOT EXISTS discounts (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      percent REAL NOT NULL,
+      category TEXT,
+      productId TEXT,
+      active INTEGER DEFAULT 1
+    );
+  `);
+  // seed se vazio
+  const prodCount = db.exec("SELECT COUNT(*) as c FROM products")[0]?.values[0]?.[0] || 0;
+  if (prodCount === 0) {
+    const stmt = db.prepare("INSERT INTO products (id, name, description, price, category, image, badge, popular) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const p of DEFAULT_PRODUCTS) {
+      stmt.run([p.id, p.name, p.desc || p.description, p.price, p.category, p.image, p.badge, p.popular ? 1 : 0]);
+    }
+    stmt.free();
+  }
+  const setCount = db.exec("SELECT COUNT(*) as c FROM settings WHERE id=1")[0]?.values[0]?.[0] || 0;
+  if (setCount === 0) {
+    const s = DEFAULT_SETTINGS;
+    db.run("INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [s.address, s.gmapsLink, s.phoneDisplay, s.phoneTel, s.whatsappNumber, s.instagramUrl, s.ifoodUrl, s.logo, s.openHour, s.closeHour, s.heroTitle, s.heroSubtitle]);
+  }
+  const adminCount = db.exec("SELECT COUNT(*) as c FROM admins")[0]?.values[0]?.[0] || 0;
+  if (adminCount === 0) {
+    const stmt = db.prepare("INSERT INTO admins (id, email, password, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)");
+    for (const a of DEFAULT_ADMINS) stmt.run([a.id, a.email, a.password, a.name, a.role, a.createdAt]);
+    stmt.free();
+  }
+  saveDb();
+  return db;
+}
+
+// Helpers para converter linhas
+function rowToProduct(row) {
+  // row é array de valores na ordem SELECT *
+  const [id, name, description, price, category, image, badge, popular] = row;
+  return { id, name, desc: description, description, price, category, image, badge, popular: !!popular };
+}
+
+export async function sqlGetProducts() {
+  const db = await getDb();
+  const res = db.exec("SELECT * FROM products ORDER BY rowid");
+  if (!res[0]) return [];
+  return res[0].values.map(rowToProduct);
+}
+export async function sqlSaveProducts(products) {
+  const db = await getDb();
+  db.exec("DELETE FROM products");
+  const stmt = db.prepare("INSERT INTO products (id, name, description, price, category, image, badge, popular) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const p of products) stmt.run([p.id, p.name, p.desc || p.description, Number(p.price), p.category, p.image, p.badge, p.popular ? 1 : 0]);
+  stmt.free();
+  saveDb();
+}
+
+export async function sqlGetSettings() {
+  const db = await getDb();
+  const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle FROM settings WHERE id=1");
+  if (!res[0] || !res[0].values[0]) return null;
+  const v = res[0].values[0];
+  return {
+    address: v[0], gmapsLink: v[1], phoneDisplay: v[2], phoneTel: v[3], whatsappNumber: v[4],
+    instagramUrl: v[5], ifoodUrl: v[6], logo: v[7], openHour: v[8], closeHour: v[9], heroTitle: v[10], heroSubtitle: v[11]
+  };
+}
+export async function sqlSaveSettings(settings) {
+  const db = await getDb();
+  const cur = await sqlGetSettings();
+  const next = { ...cur, ...settings };
+  db.run("UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=? WHERE id=1",
+    [next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle]);
+  saveDb();
+  return next;
+}
+
+export async function sqlGetAdmins() {
+  const db = await getDb();
+  const res = db.exec("SELECT id, email, password, name, role, createdAt FROM admins ORDER BY rowid");
+  if (!res[0]) return [];
+  return res[0].values.map(r => ({ id: r[0], email: r[1], password: r[2], name: r[3], role: r[4], createdAt: r[5] }));
+}
+export async function sqlAddAdmin({ email, password, name }) {
+  const db = await getDb();
+  const exists = db.exec(`SELECT 1 FROM admins WHERE lower(email)=lower('${email.replace(/'/g, "''")}')`);
+  if (exists[0] && exists[0].values.length) throw new Error("E-mail já cadastrado");
+  const id = Date.now().toString();
+  db.run("INSERT INTO admins (id, email, password, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, email.toLowerCase(), password, name || email.split("@")[0], "admin", new Date().toISOString()]);
+  saveDb();
+  return { id, email, password, name, role: "admin" };
+}
+export async function sqlRemoveAdmin(id) {
+  const db = await getDb();
+  const cnt = db.exec("SELECT COUNT(*) FROM admins")[0].values[0][0];
+  if (cnt <= 1) throw new Error("Mantenha ao menos 1 admin");
+  db.run("DELETE FROM admins WHERE id=?", [id]);
+  saveDb();
+}
+export async function sqlLogin(email, password) {
+  const db = await getDb();
+  const stmt = db.prepare("SELECT id, email, password, name, role FROM admins WHERE lower(email)=lower(?) AND password=?");
+  const res = stmt.getAsObject([email, password]);
+  stmt.free();
+  if (!res || !res.id) throw new Error("E-mail ou senha inválidos");
+  return res;
+}
+
+export async function sqlGetDiscounts() {
+  const db = await getDb();
+  const res = db.exec("SELECT id, label, percent, category, productId, active FROM discounts ORDER BY rowid");
+  if (!res[0]) return [];
+  return res[0].values.map(r => ({ id: r[0], label: r[1], percent: Number(r[2]), category: r[3], productId: r[4], active: !!r[5] }));
+}
+export async function sqlAddDiscount(payload) {
+  const db = await getDb();
+  const id = Date.now().toString();
+  db.run("INSERT INTO discounts (id, label, percent, category, productId, active) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, payload.label, Number(payload.percent), payload.category || "Todos", payload.productId || null, payload.active ? 1 : 0]);
+  saveDb();
+  return { id, ...payload };
+}
+export async function sqlUpdateDiscount(id, patch) {
+  const db = await getDb();
+  const curRes = db.exec(`SELECT label, percent, category, productId, active FROM discounts WHERE id='${id.replace(/'/g,"''")}'`);
+  if (!curRes[0] || !curRes[0].values[0]) throw new Error("Desconto não encontrado");
+  const cur = curRes[0].values[0];
+  const next = {
+    label: patch.label ?? cur[0],
+    percent: patch.percent ?? cur[1],
+    category: patch.category ?? cur[2],
+    productId: patch.productId !== undefined ? patch.productId : cur[3],
+    active: patch.active !== undefined ? (patch.active ? 1 : 0) : cur[4]
+  };
+  db.run("UPDATE discounts SET label=?, percent=?, category=?, productId=?, active=? WHERE id=?",
+    [next.label, Number(next.percent), next.category, next.productId, next.active, id]);
+  saveDb();
+}
+export async function sqlRemoveDiscount(id) {
+  const db = await getDb();
+  db.run("DELETE FROM discounts WHERE id=?", [id]);
+  saveDb();
+}
+
+export async function sqlReset() {
+  localStorage.removeItem(STORAGE_KEY);
+  db = null;
+  await getDb();
+}
