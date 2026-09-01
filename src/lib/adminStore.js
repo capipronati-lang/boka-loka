@@ -60,24 +60,31 @@ export function getProducts() {
   return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PRODUCTS;
 }
 export function saveProducts(products) {
-  localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-  window.dispatchEvent(new Event("boka:products"));
+  try {
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
+    window.dispatchEvent(new Event("boka:products"));
+  } catch (e) {
+    if (e.name === "QuotaExceededError" || e.message.includes("quota")) {
+      alert("Erro: imagens muito grandes. Use URL ou imagens menores (máx 800px). Tente novamente com imagem menor.");
+      throw e;
+    }
+    throw e;
+  }
   apiSend("/products/bulk", "POST", products).catch(() => {});
-  // SQL no navegador (grátis) — espelha também
-  sqlBrowser.sqlSaveProducts(products).catch(()=>{});
+  sqlBrowser.sqlSaveProducts(products).catch((e)=> console.warn("sqlBrowser saveProducts falhou", e));
 }
 export async function fetchProductsFromSql() {
   const data = await apiGet("/products");
   if (Array.isArray(data) && data.length) {
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(data));
-    window.dispatchEvent(new Event("boka:products"));
+    try { localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(data)); window.dispatchEvent(new Event("boka:products")); } catch {}
     return data;
   }
-  // fallback SQL no navegador (100% grátis)
+  // fallback SQL no navegador (100% grátis) — só hidrata se localStorage vazio
+  const hasLocal = localStorage.getItem(KEYS.PRODUCTS);
+  if (hasLocal) return null; // não sobrescreve dados já salvos pelo usuário
   const browser = await tryBrowserSqlGet("products");
   if (Array.isArray(browser) && browser.length) {
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(browser));
-    window.dispatchEvent(new Event("boka:products"));
+    try { localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(browser)); window.dispatchEvent(new Event("boka:products")); } catch {}
     return browser;
   }
   return null;
@@ -95,8 +102,16 @@ export function getSettings() {
 }
 export function saveSettings(settings) {
   const merged = { ...getSettings(), ...settings };
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged));
-  window.dispatchEvent(new Event("boka:settings"));
+  try {
+    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged));
+    window.dispatchEvent(new Event("boka:settings"));
+  } catch (e) {
+    if (e.name === "QuotaExceededError" || String(e.message).includes("quota")) {
+      alert("Logo muito grande. Use URL ou imagem menor (recomendado SVG ou PNG < 200KB).");
+      throw e;
+    }
+    throw e;
+  }
   apiSend("/settings", "PUT", merged).catch(() => {});
   sqlBrowser.sqlSaveSettings(merged).catch(()=>{});
   return merged;
@@ -104,14 +119,14 @@ export function saveSettings(settings) {
 export async function fetchSettingsFromSql() {
   const data = await apiGet("/settings");
   if (data && data.address) {
-    localStorage.setItem(KEYS.SETTINGS, JSON.stringify({ ...DEFAULT_SETTINGS, ...data }));
-    window.dispatchEvent(new Event("boka:settings"));
+    try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify({ ...DEFAULT_SETTINGS, ...data })); window.dispatchEvent(new Event("boka:settings")); } catch {}
     return data;
   }
+  const hasLocal = localStorage.getItem(KEYS.SETTINGS);
+  if (hasLocal) return null;
   const browser = await tryBrowserSqlGet("settings");
   if (browser && browser.address) {
-    localStorage.setItem(KEYS.SETTINGS, JSON.stringify({ ...DEFAULT_SETTINGS, ...browser }));
-    window.dispatchEvent(new Event("boka:settings"));
+    try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify({ ...DEFAULT_SETTINGS, ...browser })); window.dispatchEvent(new Event("boka:settings")); } catch {}
     return browser;
   }
   return null;
@@ -134,14 +149,14 @@ export function saveAdmins(admins) {
 export async function fetchAdminsFromSql() {
   const data = await apiGet("/admins");
   if (Array.isArray(data) && data.length) {
-    localStorage.setItem(KEYS.ADMINS, JSON.stringify(data));
-    window.dispatchEvent(new Event("boka:admins"));
+    try { localStorage.setItem(KEYS.ADMINS, JSON.stringify(data)); window.dispatchEvent(new Event("boka:admins")); } catch {}
     return data;
   }
+  const hasLocal = localStorage.getItem(KEYS.ADMINS);
+  if (hasLocal) return null;
   const browser = await tryBrowserSqlGet("admins");
   if (Array.isArray(browser) && browser.length) {
-    localStorage.setItem(KEYS.ADMINS, JSON.stringify(browser));
-    window.dispatchEvent(new Event("boka:admins"));
+    try { localStorage.setItem(KEYS.ADMINS, JSON.stringify(browser)); window.dispatchEvent(new Event("boka:admins")); } catch {}
     return browser;
   }
   return null;
@@ -191,14 +206,14 @@ export function saveDiscounts(discounts) {
 export async function fetchDiscountsFromSql() {
   const data = await apiGet("/discounts");
   if (Array.isArray(data)) {
-    localStorage.setItem(KEYS.DISCOUNTS, JSON.stringify(data));
-    window.dispatchEvent(new Event("boka:discounts"));
+    try { localStorage.setItem(KEYS.DISCOUNTS, JSON.stringify(data)); window.dispatchEvent(new Event("boka:discounts")); } catch {}
     return data;
   }
+  const hasLocal = localStorage.getItem(KEYS.DISCOUNTS);
+  if (hasLocal) return null;
   const browser = await tryBrowserSqlGet("discounts");
   if (Array.isArray(browser)) {
-    localStorage.setItem(KEYS.DISCOUNTS, JSON.stringify(browser));
-    window.dispatchEvent(new Event("boka:discounts"));
+    try { localStorage.setItem(KEYS.DISCOUNTS, JSON.stringify(browser)); window.dispatchEvent(new Event("boka:discounts")); } catch {}
     return browser;
   }
   return null;

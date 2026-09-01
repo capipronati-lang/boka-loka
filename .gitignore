@@ -25,3 +25,5 @@ server/boka.db-*
 *.njsproj
 *.sln
 *.sw?
+
+.vercel

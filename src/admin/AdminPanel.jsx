@@ -11,6 +11,30 @@ function fileToDataUrl(file) {
     r.readAsDataURL(file);
   });
 }
+async function compressImage(file, max = 800, quality = 0.7) {
+  // se for SVG, não comprime
+  if (file.type.includes("svg")) return fileToDataUrl(file);
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    let { width, height } = img;
+    if (width > max || height > max) {
+      const ratio = Math.min(max / width, max / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return fileToDataUrl(file);
+  }
+}
 
 export default function AdminPanel() {
   const [session, setSession] = useState(() => getSession());
@@ -151,8 +175,14 @@ function ProdutosTab({ products, setProducts, showToast }) {
 
   const onFile = async (file) => {
     if (!file) return;
-    const url = await fileToDataUrl(file);
-    setForm(f=>({ ...f, image: url }));
+    if (file.size > 400_000) {
+      // tenta comprimir
+      const url = await compressImage(file);
+      setForm(f=>({ ...f, image: url }));
+    } else {
+      const url = await fileToDataUrl(file);
+      setForm(f=>({ ...f, image: url }));
+    }
   };
 
   return (
@@ -420,8 +450,14 @@ function LogoTab({ settings, setSettings, showToast }) {
 
   const onFile = async (file) => {
     if (!file) return;
-    const data = await fileToDataUrl(file);
-    setLogo(data);
+    // SVG mantém vetor, outros comprimem
+    if (file.type.includes("svg")) {
+      const data = await fileToDataUrl(file);
+      setLogo(data);
+    } else {
+      const data = await compressImage(file, 400, 0.8);
+      setLogo(data);
+    }
   };
   const save = () => {
     const next = saveSettings({ logo });
