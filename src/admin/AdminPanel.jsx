@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, saveProducts, softDeleteProduct, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount, getTrash, restoreTrash, hardDeleteTrash, clearTrash } from "../lib/adminStore";
-import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User, ArchiveRestore, Trash } from "lucide-react";
+import { getProducts, saveProducts, softDeleteProduct, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount, getTrash, restoreTrash, hardDeleteTrash, clearTrash, restoreProduct, purgeExpiredProducts } from "../lib/adminStore";
+import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User, ArchiveRestore, Trash, History, Clock, Calendar, AlertTriangle, Eye } from "lucide-react";
 import AdminLogin from "./AdminLogin";
 
 function fileToDataUrl(file) {
@@ -44,7 +44,7 @@ export default function AdminPanel() {
   const [admins, setAdmins] = useState(() => getAdmins());
   const [discounts, setDiscounts] = useState(() => getDiscounts());
   const [accounts, setAccounts] = useState(() => { try { return getAccounts(); } catch { return []; } });
-  const [trash, setTrash] = useState({ products: [], admins: [], discounts: [], accounts: [] });
+  const [trash, setTrash] = useState({ products: [], productsLast30: [], admins: [], discounts: [], accounts: [] });
   const [toast, setToast] = useState(null);
 
   // keep in sync with localStorage events from other tabs
@@ -80,10 +80,10 @@ export default function AdminPanel() {
     });
   }, []);
   const loadTrash = async () => {
-    try { const data = await getTrash(); if (data) setTrash(data); } catch {}
+    try { const data = await getTrash(); if (data) setTrash({ products: data.products || [], productsLast30: data.productsLast30 || data.products || [], admins: data.admins || [], discounts: data.discounts || [], accounts: data.accounts || [] }); } catch {}
   };
   useEffect(() => { loadTrash(); }, []);
-  useEffect(() => { if (tab === "lixeira") loadTrash(); }, [tab]);
+  useEffect(() => { if (tab === "lixeira" || tab === "historico") loadTrash(); }, [tab]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -93,6 +93,9 @@ export default function AdminPanel() {
   if (!session) {
     return <AdminLogin onSuccess={(a) => setSession({ email: a.email, name: a.name, id: a.id })} />;
   }
+
+  const historicoCount = trash.productsLast30?.length ?? 0;
+  const lixeiraTotal = (trash.products?.length || 0) + (trash.admins?.length || 0) + (trash.discounts?.length || 0) + (trash.accounts?.length || 0);
 
   return (
     <div className="min-h-screen bg-[#fffbf0] text-zinc-900">
@@ -116,6 +119,7 @@ export default function AdminPanel() {
           <div className="flex gap-1 overflow-x-auto py-2 scrollbar-thin">
             {[
               { id: "produtos", label: "Produtos", icon: ShoppingBag },
+              { id: "historico", label: `Histórico`, icon: History, badge: historicoCount },
               { id: "descontos", label: "Descontos", icon: Percent },
               { id: "config", label: "Loja", icon: Settings },
               { id: "logo", label: "Logo", icon: ImageIcon },
@@ -123,19 +127,20 @@ export default function AdminPanel() {
               { id: "contas", label: "Contas", icon: User },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab===t.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
-                <t.icon className="h-4 w-4" /> {t.label}
+                <t.icon className="h-4 w-4" /> {t.label} {t.badge > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab===t.id ? "bg-white text-zinc-900" : "bg-amber-400 text-zinc-900"}`}>{t.badge}</span>}
               </button>
             ))}
             <button onClick={() => setTab("lixeira")} className={`ml-2 inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab==="lixeira" ? "bg-red-600 text-white ring-red-600" : "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"}`}>
-              <Trash className="h-4 w-4" /> Lixeira {(trash.products?.length + trash.admins?.length + trash.discounts?.length + trash.accounts?.length) > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab==="lixeira" ? "bg-white text-red-600" : "bg-red-600 text-white"}`}>{trash.products.length + trash.admins.length + trash.discounts.length + trash.accounts.length}</span>}
+              <Trash className="h-4 w-4" /> Lixeira {lixeiraTotal > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab==="lixeira" ? "bg-white text-red-600" : "bg-red-600 text-white"}`}>{lixeiraTotal}</span>}
             </button>
           </div>
-          <div className="pb-1 text-xs font-bold text-zinc-500">↔️ Arraste as abas para ver todas • <button onClick={()=>setTab("lixeira")} className="font-black text-red-600 underline">Ver excluídos na Lixeira</button></div>
+          <div className="pb-1 text-xs font-bold text-zinc-500">↔️ Arraste as abas para ver todas • <button onClick={()=>setTab("historico")} className="font-black text-amber-600 underline">Histórico 30 dias de produtos excluídos</button> • <button onClick={()=>setTab("lixeira")} className="font-black text-red-600 underline">Lixeira geral</button></div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6">
-        {tab === "produtos" && <ProdutosTab products={products} setProducts={setProducts} showToast={showToast} loadTrash={loadTrash} />}
+        {tab === "produtos" && <ProdutosTab products={products} setProducts={setProducts} showToast={showToast} loadTrash={loadTrash} trash={trash} setTab={setTab} />}
+        {tab === "historico" && <HistoricoProdutosTab trash={trash} loadTrash={loadTrash} setProducts={setProducts} showToast={showToast} />}
         {tab === "descontos" && <DescontosTab products={products} discounts={discounts} setDiscounts={setDiscounts} showToast={showToast} loadTrash={loadTrash} />}
         {tab === "config" && <ConfigTab settings={settings} setSettings={setSettings} showToast={showToast} />}
         {tab === "logo" && <LogoTab settings={settings} setSettings={setSettings} showToast={showToast} />}
@@ -150,11 +155,12 @@ export default function AdminPanel() {
 }
 
 // ---------------- Produtos ----------------
-function ProdutosTab({ products, setProducts, showToast, loadTrash }) {
+function ProdutosTab({ products, setProducts, showToast, loadTrash, trash, setTab }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: "", desc: "", price: "", category: "Clássicos", image: "", badge: "Clássico", popular: false });
   const [imageMode, setImageMode] = useState("url"); // url | upload
   const categories = useMemo(() => [...new Set(products.map(p=>p.category))], [products]);
+  const historicoCount = trash?.productsLast30?.length ?? trash?.products?.filter(p=> p.deletedAt && (Date.now() - new Date(p.deletedAt).getTime()) <= 30*24*60*60*1000).length ?? 0;
 
   const reset = () => {
     setEditing(null);
@@ -186,11 +192,11 @@ function ProdutosTab({ products, setProducts, showToast, loadTrash }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Remover este produto? Ele vai para a Lixeira e poderá ser recuperado.")) return;
+    if (!confirm("Remover este produto? Ele vai para o Histórico (30 dias) e poderá ser recuperado.")) return;
     try { await softDeleteProduct(id); } catch {}
     setProducts(getProducts());
     loadTrash?.();
-    showToast("Produto movido para a Lixeira — SQL");
+    showToast("Produto movido para Histórico 30 dias");
   };
 
   const onFile = async (file) => {
@@ -207,10 +213,18 @@ function ProdutosTab({ products, setProducts, showToast, loadTrash }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 ring-1 ring-red-200 flex flex-wrap items-center justify-between gap-2">
-        <span>🗑️ Excluídos vão para a Lixeira — clique na aba <b>Lixeira</b> acima para ver e recuperar</span>
-        <span className="text-xs font-medium">SQL soft delete</span>
+      <div className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800 ring-1 ring-amber-200 flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-2"><History className="h-4 w-4" /> Produtos excluídos ficam 30 dias no Histórico e podem ser recuperados</span>
+        <button onClick={()=>setTab?.("historico")} className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-black text-white hover:bg-amber-600">
+          <Eye className="h-3.5 w-3.5" /> Ver Histórico {historicoCount>0 && `(${historicoCount})`}
+        </button>
       </div>
+      {historicoCount>0 && (
+        <div className="rounded-xl bg-white p-3 ring-1 ring-zinc-200 flex items-center justify-between">
+          <div className="text-sm"><span className="font-black">{historicoCount} produto{historicoCount!==1?"s":""} excluído{historicoCount!==1?"s":""}</span> nos últimos 30 dias — <span className="text-zinc-500">você pode recuperar a qualquer momento</span></div>
+          <button onClick={()=>setTab?.("historico")} className="rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-black text-white">Abrir Histórico</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-[22px] font-black tracking-tight">Produtos</h2>
@@ -296,6 +310,182 @@ function ProdutosTab({ products, setProducts, showToast, loadTrash }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------- Histórico de Produtos Excluídos (30 dias) ----------------
+function HistoricoProdutosTab({ trash, loadTrash, setProducts, showToast }) {
+  const [filter, setFilter] = useState("");
+  // usa productsLast30 se disponível, senão filtra manualmente
+  const rawProducts = trash.products || [];
+  const productsLast30 = useMemo(() => {
+    if (trash.productsLast30 && trash.productsLast30.length) return trash.productsLast30;
+    const now = Date.now();
+    const THIRTY = 30*24*60*60*1000;
+    return rawProducts.filter(p => {
+      if (!p.deletedAt) return false;
+      return (now - new Date(p.deletedAt).getTime()) <= THIRTY;
+    });
+  }, [trash.products, trash.productsLast30, rawProducts]);
+  const expiredProducts = useMemo(() => {
+    const now = Date.now();
+    const THIRTY = 30*24*60*60*1000;
+    return rawProducts.filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) > THIRTY);
+  }, [rawProducts]);
+
+  const filtered = useMemo(() => {
+    if (!filter.trim()) return productsLast30;
+    const q = filter.toLowerCase();
+    return productsLast30.filter(p => p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q) || p.id?.toLowerCase().includes(q));
+  }, [productsLast30, filter]);
+
+  const handleRestore = async (id) => {
+    try {
+      // tenta endpoint dedicado de produto primeiro, fallback para trash genérico
+      try { await restoreProduct(id); } catch { await restoreTrash("products", id); }
+      showToast("✅ Produto recuperado — voltou para o cardápio");
+      await loadTrash();
+      const m = await import("../lib/adminStore");
+      const d = await m.fetchProductsFromSql();
+      if (d) setProducts(d); else setProducts(m.getProducts());
+    } catch (e) { showToast(e.message || "Erro ao recuperar"); }
+  };
+  const handleHardDelete = async (id) => {
+    if (!confirm("Excluir permanentemente? Não poderá recuperar depois de 30 dias mesmo.")) return;
+    try {
+      await hardDeleteTrash("products", id);
+      showToast("Excluído permanentemente");
+      loadTrash();
+    } catch (e) { showToast(e.message); }
+  };
+  const handlePurgeExpired = async () => {
+    if (!confirm(`Remover permanentemente ${expiredProducts.length} produto(s) expirado(s) há mais de 30 dias?`)) return;
+    try {
+      const res = await purgeExpiredProducts();
+      showToast(res?.purged ? `${res.purged} expirados removidos` : "Expirados removidos");
+      // também hard delete manual dos expirados se API não purgou
+      for (const p of expiredProducts) { try { await hardDeleteTrash("products", p.id); } catch {} }
+      loadTrash();
+    } catch (e) { showToast(e.message); }
+  };
+
+  const calcRemaining = (deletedAt) => {
+    if (!deletedAt) return null;
+    const diff = Date.now() - new Date(deletedAt).getTime();
+    const days = Math.floor(diff / (1000*60*60*24));
+    const hours = Math.floor((diff % (1000*60*60*24)) / (1000*60*60));
+    const remaining = 30 - days;
+    return { days, hours, remaining: Math.max(0, remaining) };
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <History className="h-6 w-6 text-amber-600" />
+            <h2 className="font-display text-[22px] font-black tracking-tight">Histórico — Produtos Excluídos</h2>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800 ring-1 ring-amber-200">30 dias • recuperável</span>
+          </div>
+          <p className="mt-1 text-sm text-zinc-500">Todo produto excluído fica aqui por <b>30 dias</b>. Dentro desse prazo você pode <b>recuperar com 1 clique</b>. Após 30 dias é removido automaticamente.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={loadTrash} className="rounded-full bg-white px-4 py-2 text-xs font-black ring-1 ring-zinc-200 hover:bg-zinc-50">Atualizar</button>
+          {expiredProducts.length>0 && <button onClick={handlePurgeExpired} className="rounded-full bg-red-600 px-4 py-2 text-xs font-black text-white hover:bg-red-700">Limpar expirados ({expiredProducts.length})</button>}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+          <div className="text-xs font-black tracking-wide text-zinc-500 flex items-center gap-2"><Clock className="h-4 w-4" /> ATIVOS NO HISTÓRICO</div>
+          <div className="mt-1 text-2xl font-black">{productsLast30.length}</div>
+          <div className="text-xs text-zinc-500">nos últimos 30 dias</div>
+        </div>
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+          <div className="text-xs font-black tracking-wide text-zinc-500 flex items-center gap-2"><Calendar className="h-4 w-4" /> TOTAL NA LIXEIRA</div>
+          <div className="mt-1 text-2xl font-black">{rawProducts.length}</div>
+          <div className="text-xs text-zinc-500">produtos com deleted=1</div>
+        </div>
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+          <div className="text-xs font-black tracking-wide text-zinc-500 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-500" /> EXPIRADOS &gt;30 DIAS</div>
+          <div className="mt-1 text-2xl font-black text-red-600">{expiredProducts.length}</div>
+          <div className="text-xs text-zinc-500">serão removidos</div>
+        </div>
+      </div>
+
+      <div className="rounded-[20px] bg-white p-4 ring-1 ring-zinc-200">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm font-black">Buscar no histórico</div>
+          <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Nome, categoria ou ID..." className="w-full sm:w-72 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm outline-none focus:border-zinc-900 focus:bg-white" />
+        </div>
+        <div className="mt-2 text-xs text-zinc-500">{filtered.length} resultado(s) • ordenado por data de exclusão (recente primeiro)</div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-[20px] bg-white p-10 text-center ring-1 ring-zinc-200">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-amber-100 text-amber-600"><History className="h-6 w-6" /></div>
+          <div className="mt-3 font-black">Nenhum produto excluído nos últimos 30 dias</div>
+          <div className="mt-1 text-sm text-zinc-500">Quando você excluir um produto em <b>Produtos → 🗑️</b>, ele aparecerá aqui e poderá ser recuperado.</div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map(p=> {
+            const info = calcRemaining(p.deletedAt);
+            const remaining = info?.remaining ?? p.daysRemaining ?? 0;
+            const isUrgent = remaining <= 5;
+            const isWarning = remaining <= 10 && remaining >5;
+            return (
+              <div key={p.id} className={`flex flex-col gap-3 rounded-2xl bg-white p-4 ring-1 sm:flex-row sm:items-center sm:justify-between ${isUrgent ? "ring-red-200 bg-red-50/50" : isWarning ? "ring-amber-200 bg-amber-50/40" : "ring-zinc-200"}`}>
+                <div className="flex gap-3 min-w-0 flex-1">
+                  <img src={p.image} alt={p.name} className="h-16 w-16 shrink-0 rounded-xl object-cover ring-1 ring-zinc-200" onError={(e)=>{e.currentTarget.src="https://images.unsplash.com/photo-1568909344668-6f14a07b56a0?w=200&q=60&auto=format&fit=crop"}} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-black truncate">{p.name}</span>
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black ring-1 ring-zinc-200">{p.category}</span>
+                      {p.badge && <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black ring-1 ring-zinc-200">{p.badge}</span>}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-zinc-500">{p.desc || p.description || "Sem descrição"} • R$ {Number(p.price).toFixed(2).replace(".",",")}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 font-mono text-zinc-500"><Calendar className="h-3 w-3" /> Excluído em {p.deletedAt ? new Date(p.deletedAt).toLocaleString("pt-BR") : "—"}</span>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black ring-1 ${isUrgent ? "bg-red-600 text-white ring-red-600" : isWarning ? "bg-amber-400 text-zinc-900 ring-amber-400" : "bg-emerald-100 text-emerald-700 ring-emerald-200"}`}>
+                        <Clock className="h-3 w-3" /> {remaining} dia{remaining!==1?"s":""} restante{remaining!==1?"s":""} {info && `(${info.days}d ${info.hours}h atrás)`}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 ring-1 ring-zinc-200">
+                      <div className={`h-full ${isUrgent ? "bg-red-500" : isWarning ? "bg-amber-400" : "bg-emerald-500"}`} style={{ width: `${Math.max(5, (remaining/30)*100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-auto">
+                  <button onClick={()=>handleRestore(p.id)} className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700">
+                    <ArchiveRestore className="h-4 w-4" /> Recuperar
+                  </button>
+                  <button onClick={()=>handleHardDelete(p.id)} className="grid h-10 w-10 place-items-center rounded-full bg-white text-red-600 ring-1 ring-zinc-200 hover:bg-red-50" title="Excluir permanentemente">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {expiredProducts.length>0 && (
+        <div className="rounded-[20px] bg-white p-4 ring-1 ring-red-200">
+          <div className="flex items-center gap-2 font-black text-red-700"><AlertTriangle className="h-4 w-4" /> Expirados há mais de 30 dias ({expiredProducts.length})</div>
+          <p className="mt-1 text-xs text-zinc-500">Foram excluídos há mais de 30 dias. Não são mais recuperáveis pelo histórico de 30 dias, mas ainda estão na Lixeira geral até limpeza. Você pode removê-los permanentemente aqui.</p>
+          <div className="mt-3 grid gap-2">
+            {expiredProducts.slice(0,5).map(p=> (
+              <div key={p.id} className="flex items-center justify-between rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                <span className="font-bold text-sm truncate">{p.name} • {p.deletedAt ? new Date(p.deletedAt).toLocaleDateString("pt-BR"): ""}</span>
+                <button onClick={()=>handleHardDelete(p.id)} className="rounded-full bg-red-600 px-3 py-1 text-xs font-black text-white">Excluir definitivamente</button>
+              </div>
+            ))}
+            {expiredProducts.length>5 && <div className="text-xs text-zinc-500">+ {expiredProducts.length-5} outros • vá na Lixeira para ver todos</div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -663,6 +853,7 @@ function ContasTab({ accounts, setAccounts, showToast, loadTrash }) {
 // ---------------- Lixeira ----------------
 function LixeiraTab({ trash, loadTrash, setProducts, setAdmins, setDiscounts, setAccounts, showToast }) {
   const total = (trash.products?.length || 0) + (trash.admins?.length || 0) + (trash.discounts?.length || 0) + (trash.accounts?.length || 0);
+  const produtosRecuperaveis = trash.productsLast30?.length ?? 0;
 
   const handleRestore = async (type, id) => {
     try {
@@ -690,24 +881,27 @@ function LixeiraTab({ trash, loadTrash, setProducts, setAdmins, setDiscounts, se
     try { await clearTrash(); showToast("Lixeira esvaziada"); loadTrash(); } catch (e) { showToast(e.message); }
   };
 
-  const Section = ({ title, items, type, render }) => (
-    <div className="rounded-[20px] bg-white p-4 ring-1 ring-zinc-200">
+  const Section = ({ title, items, type, render, highlight }) => (
+    <div className={`rounded-[20px] p-4 ring-1 ${highlight ? "bg-amber-50 ring-amber-200" : "bg-white ring-zinc-200"}`}>
       <div className="flex items-center justify-between">
-        <h3 className="font-black">{title} <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs">{items.length}</span></h3>
+        <h3 className="font-black flex items-center gap-2">{title} <span className={`rounded-full px-2 py-0.5 text-xs ${highlight ? "bg-amber-400 text-zinc-900" : "bg-zinc-100"}`}>{items.length}</span> {highlight && items.length>0 && <span className="text-[11px] font-bold text-amber-700">• 30 dias recuperável</span>}</h3>
       </div>
       <div className="mt-3 grid gap-2">
-        {items.length === 0 ? <div className="text-sm text-zinc-500">Vazio</div> : items.map(item => (
-          <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+        {items.length === 0 ? <div className="text-sm text-zinc-500">Vazio</div> : items.map(item => {
+          const remaining = item.daysRemaining ?? (item.deletedAt ? Math.max(0, 30 - Math.floor((Date.now() - new Date(item.deletedAt).getTime())/(1000*60*60*24))) : null);
+          return (
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 ring-1 ring-zinc-200">
             <div className="min-w-0">
               <div className="truncate font-bold text-sm">{render(item)}</div>
               <div className="truncate font-mono text-xs text-zinc-500">{item.id} • {item.email || item.name || item.label || ""} {item.deletedAt ? "• " + new Date(item.deletedAt).toLocaleString("pt-BR") : ""}</div>
+              {type==="products" && remaining!==null && <div className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${remaining<=5?"bg-red-100 text-red-700 ring-1 ring-red-200":remaining<=10?"bg-amber-100 text-amber-700 ring-1 ring-amber-200":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200"}`}>{remaining} dias restantes</div>}
             </div>
             <div className="flex gap-1">
               <button onClick={()=>handleRestore(type, item.id)} className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-700"><ArchiveRestore className="h-3.5 w-3.5" /> Recuperar</button>
               <button onClick={()=>handleHardDelete(type, item.id)} className="grid h-8 w-8 place-items-center rounded-full bg-white text-red-600 ring-1 ring-zinc-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
@@ -719,13 +913,15 @@ function LixeiraTab({ trash, loadTrash, setProducts, setAdmins, setDiscounts, se
           <Trash className="h-5 w-5 text-zinc-900" />
           <h2 className="font-display text-[22px] font-black tracking-tight">Lixeira</h2>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-bold ring-1 ring-zinc-200">{total} itens • SQL soft delete</span>
+          {produtosRecuperaveis>0 && <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-black text-zinc-900">{produtosRecuperaveis} produtos recuperáveis (30d)</span>}
         </div>
         {total > 0 && <button onClick={handleClear} className="rounded-full bg-red-600 px-4 py-2 text-xs font-black text-white hover:bg-red-700">Esvaziar lixeira</button>}
       </div>
-      <p className="text-sm text-zinc-500">Itens apagados ficam aqui com <span className="font-mono font-bold">deleted=1</span> no SQL. Você pode <span className="font-bold">recuperar</span> (volta para o site) ou <span className="font-bold">excluir permanentemente</span> (DELETE). Ao adicionar/excluir, a página atualiza e o SQL é gravado.</p>
+      <p className="text-sm text-zinc-500">Itens apagados ficam aqui com <span className="font-mono font-bold">deleted=1</span> no SQL. <b>Produtos</b> têm histórico de <b>30 dias</b> para recuperação (veja aba <b>Histórico</b>). Você pode <span className="font-bold">recuperar</span> (volta para o site) ou <span className="font-bold">excluir permanentemente</span> (DELETE).</p>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Produtos" items={trash.products || []} type="products" render={(p)=> `${p.name} — R$ ${Number(p.price).toFixed(2)}`} />
+        <Section highlight title="Produtos (Histórico 30 dias)" items={trash.productsLast30 || trash.products || []} type="products" render={(p)=> `${p.name} — R$ ${Number(p.price).toFixed(2)}`} />
+        <Section title="Produtos expirados / todos" items={trash.products || []} type="products" render={(p)=> `${p.name} — R$ ${Number(p.price).toFixed(2)}`} />
         <Section title="Contas" items={trash.accounts || []} type="accounts" render={(a)=> `${a.name} — ${a.email}`} />
         <Section title="Admins" items={trash.admins || []} type="admins" render={(a)=> `${a.name} — ${a.email}`} />
         <Section title="Descontos" items={trash.discounts || []} type="discounts" render={(d)=> `${d.label} — ${d.percent}%`} />

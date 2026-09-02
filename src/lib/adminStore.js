@@ -357,7 +357,7 @@ export async function hydrateFromSql() {
 export async function getTrash() {
   const apiData = await apiGet("/trash");
   if (apiData) return apiData;
-  try { return await sqlBrowser.sqlGetTrash(); } catch { return { products: [], admins: [], discounts: [], accounts: [] }; }
+  try { return await sqlBrowser.sqlGetTrash(); } catch { return { products: [], productsLast30: [], admins: [], discounts: [], accounts: [] }; }
 }
 export async function restoreTrash(type, id) {
   const apiRes = await apiSend(`/trash/restore/${type}/${id}`, "POST");
@@ -377,4 +377,33 @@ export async function clearTrash() {
   const apiRes = await apiSend("/trash/clear", "DELETE");
   if (apiRes !== null) return apiRes;
   await sqlBrowser.sqlClearTrash();
+}
+
+// HISTÓRICO DE PRODUTOS EXCLUÍDOS (últimos 30 dias)
+export async function getDeletedProductsHistory() {
+  const apiData = await apiGet("/products/deleted/history");
+  if (Array.isArray(apiData)) return apiData;
+  const apiData2 = await apiGet("/products/deleted");
+  if (apiData2 && Array.isArray(apiData2.history)) return apiData2.history;
+  if (apiData2 && Array.isArray(apiData2)) return apiData2;
+  try { return await sqlBrowser.sqlGetDeletedProductsHistory(); } catch { return []; }
+}
+export async function restoreProduct(id) {
+  const apiRes = await apiSend(`/products/${id}/restore`, "POST");
+  if (apiRes !== null) {
+    await hydrateFromSql();
+    return apiRes;
+  }
+  await sqlBrowser.sqlRestoreProduct(id);
+  await hydrateFromSql();
+}
+export async function purgeExpiredProducts() {
+  const apiRes = await apiSend("/products/purge-expired", "POST");
+  if (apiRes !== null) return apiRes;
+  try { return await sqlBrowser.sqlPurgeExpiredProducts(); } catch { return 0; }
+}
+export function filterProductsLast30Days(products) {
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  return (products || []).filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) <= THIRTY);
 }

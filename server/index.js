@@ -23,6 +23,22 @@ function rowToProduct(r) {
     popular: !!r.popular,
   };
 }
+function rowToProductWithTrash(r) {
+  return {
+    ...rowToProduct(r),
+    deleted: !!r.deleted,
+    deletedAt: r.deletedAt || null,
+    daysRemaining: r.deletedAt ? Math.max(0, 30 - Math.floor((Date.now() - new Date(r.deletedAt).getTime()) / (1000*60*60*24))) : null,
+    isExpired: r.deletedAt ? (Date.now() - new Date(r.deletedAt).getTime()) > 30*24*60*60*1000 : false,
+  };
+}
+async function purgeExpiredProducts(db) {
+  // hard delete produtos com >30 dias na lixeira (opcional auto-limpeza)
+  try {
+    const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+    await db.run("DELETE FROM products WHERE deleted=1 AND deletedAt IS NOT NULL AND deletedAt < ?", cutoff);
+  } catch {}
+}
 
 // --- PRODUCTS (apenas não deletados) ---
 app.get("/api/products", async (req, res) => {
@@ -289,6 +305,44 @@ app.delete("/api/accounts/:id", async (req, res) => {
   res.json({ ok: true, soft: true });
 });
 
+// --- HISTÓRICO DE PRODUTOS EXCLUÍDOS (últimos 30 dias, recuperável) ---
+app.get("/api/products/deleted", async (req, res) => {
+  const db = await getDb();
+  // não apaga automaticamente, apenas informa expirados mas permite filtrar ?expired=false
+  const rows = await db.all("SELECT * FROM products WHERE deleted=1 ORDER BY deletedAt DESC");
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  const enriched = rows.map(rowToProductWithTrash);
+  const last30 = enriched.filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) <= THIRTY);
+  const expired = enriched.filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) > THIRTY);
+  res.json({ history: last30, expired, all: enriched, totalLast30: last30.length });
+});
+app.get("/api/products/deleted/history", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM products WHERE deleted=1 ORDER BY deletedAt DESC");
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  const enriched = rows.map(rowToProductWithTrash);
+  const last30 = enriched.filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) <= THIRTY);
+  res.json(last30);
+});
+app.post("/api/products/:id/restore", async (req, res) => {
+  const db = await getDb();
+  const { id } = req.params;
+  const row = await db.get("SELECT * FROM products WHERE id=? AND deleted=1", id);
+  if (!row) return res.status(404).json({ error: "Produto não encontrado na lixeira" });
+  await db.run("UPDATE products SET deleted=0, deletedAt=NULL WHERE id=?", id);
+  const restored = await db.get("SELECT * FROM products WHERE id=?", id);
+  res.json(rowToProduct(restored));
+});
+app.post("/api/products/purge-expired", async (req, res) => {
+  const db = await getDb();
+  const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+  const before = await db.get("SELECT COUNT(*) as c FROM products WHERE deleted=1 AND deletedAt < ?", cutoff);
+  await db.run("DELETE FROM products WHERE deleted=1 AND deletedAt < ?", cutoff);
+  res.json({ ok: true, purged: before.c });
+});
+
 // --- LIXEIRA (ver apagados e recuperar) ---
 app.get("/api/trash", async (req, res) => {
   const db = await getDb();
@@ -296,8 +350,14 @@ app.get("/api/trash", async (req, res) => {
   const admins = await db.all("SELECT * FROM admins WHERE deleted=1 ORDER BY deletedAt DESC");
   const discounts = await db.all("SELECT * FROM discounts WHERE deleted=1 ORDER BY deletedAt DESC");
   const accounts = await db.all("SELECT * FROM accounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  const productsEnriched = products.map(rowToProductWithTrash);
+  // separa histórico 30 dias para facilitar no front
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  const productsLast30 = productsEnriched.filter(p => p.deletedAt && (now - new Date(p.deletedAt).getTime()) <= THIRTY);
   res.json({
-    products: products.map(rowToProduct),
+    products: productsEnriched,
+    productsLast30,
     admins, discounts: discounts.map(r=>({ ...r, active: !!r.active })), accounts
   });
 });

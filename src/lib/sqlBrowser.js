@@ -118,9 +118,21 @@ async function getDb() {
 
 // Helpers para converter linhas
 function rowToProduct(row) {
-  // row é array de valores na ordem SELECT *
-  const [id, name, description, price, category, image, badge, popular] = row;
-  return { id, name, desc: description, description, price, category, image, badge, popular: !!popular };
+  // row é array de valores na ordem SELECT * (10 colunas com deleted, deletedAt)
+  const [id, name, description, price, category, image, badge, popular, deleted, deletedAt] = row;
+  return { id, name, desc: description, description, price, category, image, badge, popular: !!popular, deleted: !!deleted, deletedAt: deletedAt || null };
+}
+function rowToProductWithTrash(row) {
+  const base = rowToProduct(row);
+  const deletedAt = base.deletedAt;
+  let daysRemaining = null;
+  let isExpired = false;
+  if (deletedAt) {
+    const diff = Date.now() - new Date(deletedAt).getTime();
+    daysRemaining = Math.max(0, 30 - Math.floor(diff / (1000*60*60*24)));
+    isExpired = diff > 30*24*60*60*1000;
+  }
+  return { ...base, daysRemaining, isExpired };
 }
 
 export async function sqlGetProducts() {
@@ -141,12 +153,41 @@ export async function sqlGetTrash() {
   const a = db.exec("SELECT * FROM admins WHERE deleted=1 ORDER BY deletedAt DESC");
   const d = db.exec("SELECT * FROM discounts WHERE deleted=1 ORDER BY deletedAt DESC");
   const ac = db.exec("SELECT * FROM accounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  const products = p[0] ? p[0].values.map(rowToProductWithTrash) : [];
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  const productsLast30 = products.filter(x => x.deletedAt && (now - new Date(x.deletedAt).getTime()) <= THIRTY);
   return {
-    products: p[0] ? p[0].values.map(rowToProduct) : [],
+    products,
+    productsLast30,
     admins: a[0] ? a[0].values.map(r => ({ id: r[0], email: r[1], password: r[2], name: r[3], role: r[4], createdAt: r[5], deletedAt: r[7] })) : [],
     discounts: d[0] ? d[0].values.map(r => ({ id: r[0], label: r[1], percent: Number(r[2]), category: r[3], productId: r[4], active: !!r[5], deletedAt: r[7] })) : [],
     accounts: ac[0] ? ac[0].values.map(r => ({ id: r[0], name: r[1], email: r[2], phone: r[3], password: r[4], createdAt: r[5], deletedAt: r[7] })) : [],
   };
+}
+export async function sqlGetDeletedProductsHistory() {
+  const db = await getDb();
+  const p = db.exec("SELECT * FROM products WHERE deleted=1 ORDER BY deletedAt DESC");
+  const products = p[0] ? p[0].values.map(rowToProductWithTrash) : [];
+  const now = Date.now();
+  const THIRTY = 30*24*60*60*1000;
+  const last30 = products.filter(x => x.deletedAt && (now - new Date(x.deletedAt).getTime()) <= THIRTY);
+  return last30;
+}
+export async function sqlPurgeExpiredProducts() {
+  const db = await getDb();
+  const cutoff = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+  // conta antes
+  const before = db.exec(`SELECT COUNT(*) FROM products WHERE deleted=1 AND deletedAt < '${cutoff.replace(/'/g,"''")}'`);
+  const count = before[0]?.values[0]?.[0] || 0;
+  db.exec(`DELETE FROM products WHERE deleted=1 AND deletedAt < '${cutoff.replace(/'/g,"''")}'`);
+  saveDb();
+  return count;
+}
+export async function sqlRestoreProduct(id) {
+  const db = await getDb();
+  db.run("UPDATE products SET deleted=0, deletedAt=NULL WHERE id=?", [id]);
+  saveDb();
 }
 export async function sqlRestore(type, id) {
   const db = await getDb();
