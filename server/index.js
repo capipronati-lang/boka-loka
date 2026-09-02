@@ -24,11 +24,16 @@ function rowToProduct(r) {
   };
 }
 
-// --- PRODUCTS ---
+// --- PRODUCTS (apenas não deletados) ---
 app.get("/api/products", async (req, res) => {
   const db = await getDb();
-  const rows = await db.all("SELECT * FROM products ORDER BY rowid");
+  const rows = await db.all("SELECT * FROM products WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   res.json(rows.map(rowToProduct));
+});
+app.get("/api/products/all", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM products ORDER BY rowid");
+  res.json(rows.map(r => ({ ...rowToProduct(r), deleted: !!r.deleted, deletedAt: r.deletedAt })));
 });
 
 app.post("/api/products", async (req, res) => {
@@ -76,22 +81,23 @@ app.put("/api/products/:id", async (req, res) => {
 app.delete("/api/products/:id", async (req, res) => {
   const db = await getDb();
   const { id } = req.params;
-  await db.run("DELETE FROM products WHERE id=?", id);
-  res.json({ ok: true });
+  // soft delete → lixeira
+  await db.run("UPDATE products SET deleted=1, deletedAt=? WHERE id=?", new Date().toISOString(), id);
+  res.json({ ok: true, soft: true });
 });
 
-// BULK SYNC — usado pelo painel admin para salvar array completo (SQL como fonte da verdade)
+// BULK SYNC — usado pelo painel admin para salvar array completo (preserva lixeira)
 app.post("/api/products/bulk", async (req, res) => {
   const db = await getDb();
   const products = req.body;
   if (!Array.isArray(products)) return res.status(400).json({ error: "array required" });
-  await db.run("DELETE FROM products");
-  const stmt = await db.prepare("INSERT INTO products (id, name, description, price, category, image, badge, popular) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  await db.run("DELETE FROM products WHERE deleted=0 OR deleted IS NULL");
+  const stmt = await db.prepare("INSERT INTO products (id, name, description, price, category, image, badge, popular, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)");
   for (const p of products) {
     await stmt.run(p.id, p.name, p.desc || p.description, Number(p.price), p.category || "Clássicos", p.image || "", p.badge || "", p.popular ? 1 : 0);
   }
   await stmt.finalize();
-  const rows = await db.all("SELECT * FROM products ORDER BY rowid");
+  const rows = await db.all("SELECT * FROM products WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   res.json(rows.map(rowToProduct));
 });
 
@@ -146,10 +152,15 @@ app.put("/api/settings", async (req, res) => {
   });
 });
 
-// --- ADMINS ---
+// --- ADMINS (apenas ativos) ---
 app.get("/api/admins", async (req, res) => {
   const db = await getDb();
-  const rows = await db.all("SELECT id, email, password, name, role, createdAt FROM admins ORDER BY rowid");
+  const rows = await db.all("SELECT id, email, password, name, role, createdAt FROM admins WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
+  res.json(rows);
+});
+app.get("/api/admins/all", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT id, email, password, name, role, createdAt, deleted, deletedAt FROM admins ORDER BY rowid");
   res.json(rows);
 });
 
@@ -173,10 +184,10 @@ app.post("/api/admins", async (req, res) => {
 app.delete("/api/admins/:id", async (req, res) => {
   const db = await getDb();
   const { id } = req.params;
-  const count = await db.get("SELECT COUNT(*) as c FROM admins");
+  const count = await db.get("SELECT COUNT(*) as c FROM admins WHERE deleted=0 OR deleted IS NULL");
   if (count.c <= 1) return res.status(400).json({ error: "Mantenha ao menos 1 admin" });
-  await db.run("DELETE FROM admins WHERE id=?", id);
-  res.json({ ok: true });
+  await db.run("UPDATE admins SET deleted=1, deletedAt=? WHERE id=?", new Date().toISOString(), id);
+  res.json({ ok: true, soft: true });
 });
 
 app.post("/api/admins/login", async (req, res) => {
@@ -187,11 +198,16 @@ app.post("/api/admins/login", async (req, res) => {
   res.json({ id: row.id, email: row.email, name: row.name, role: row.role });
 });
 
-// --- DISCOUNTS ---
+// --- DISCOUNTS (apenas ativos) ---
 app.get("/api/discounts", async (req, res) => {
   const db = await getDb();
-  const rows = await db.all("SELECT * FROM discounts ORDER BY rowid");
+  const rows = await db.all("SELECT * FROM discounts WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   res.json(rows.map(r => ({ ...r, active: !!r.active, percent: Number(r.percent) })));
+});
+app.get("/api/discounts/all", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM discounts ORDER BY rowid");
+  res.json(rows.map(r => ({ ...r, active: !!r.active, percent: Number(r.percent), deleted: !!r.deleted })));
 });
 
 app.post("/api/discounts", async (req, res) => {
@@ -226,12 +242,17 @@ app.put("/api/discounts/:id", async (req, res) => {
 
 app.delete("/api/discounts/:id", async (req, res) => {
   const db = await getDb();
-  await db.run("DELETE FROM discounts WHERE id=?", req.params.id);
-  res.json({ ok: true });
+  await db.run("UPDATE discounts SET deleted=1, deletedAt=? WHERE id=?", new Date().toISOString(), req.params.id);
+  res.json({ ok: true, soft: true });
 });
 
-// --- ACCOUNTS (contas de clientes) ---
+// --- ACCOUNTS (apenas ativas) ---
 app.get("/api/accounts", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM accounts WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
+  res.json(rows);
+});
+app.get("/api/accounts/all", async (req, res) => {
   const db = await getDb();
   const rows = await db.all("SELECT * FROM accounts ORDER BY rowid");
   res.json(rows);
@@ -264,7 +285,44 @@ app.put("/api/accounts/:id", async (req, res) => {
 });
 app.delete("/api/accounts/:id", async (req, res) => {
   const db = await getDb();
-  await db.run("DELETE FROM accounts WHERE id=?", req.params.id);
+  await db.run("UPDATE accounts SET deleted=1, deletedAt=? WHERE id=?", new Date().toISOString(), req.params.id);
+  res.json({ ok: true, soft: true });
+});
+
+// --- LIXEIRA (ver apagados e recuperar) ---
+app.get("/api/trash", async (req, res) => {
+  const db = await getDb();
+  const products = await db.all("SELECT * FROM products WHERE deleted=1 ORDER BY deletedAt DESC");
+  const admins = await db.all("SELECT * FROM admins WHERE deleted=1 ORDER BY deletedAt DESC");
+  const discounts = await db.all("SELECT * FROM discounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  const accounts = await db.all("SELECT * FROM accounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  res.json({
+    products: products.map(rowToProduct),
+    admins, discounts: discounts.map(r=>({ ...r, active: !!r.active })), accounts
+  });
+});
+app.post("/api/trash/restore/:type/:id", async (req, res) => {
+  const db = await getDb();
+  const { type, id } = req.params;
+  const allowed = ["products","admins","discounts","accounts"];
+  if (!allowed.includes(type)) return res.status(400).json({ error: "tipo inválido" });
+  await db.run(`UPDATE ${type} SET deleted=0, deletedAt=NULL WHERE id=?`, id);
+  res.json({ ok: true });
+});
+app.delete("/api/trash/:type/:id", async (req, res) => {
+  const db = await getDb();
+  const { type, id } = req.params;
+  const allowed = ["products","admins","discounts","accounts"];
+  if (!allowed.includes(type)) return res.status(400).json({ error: "tipo inválido" });
+  await db.run(`DELETE FROM ${type} WHERE id=?`, id);
+  res.json({ ok: true });
+});
+app.delete("/api/trash/clear", async (req, res) => {
+  const db = await getDb();
+  await db.run("DELETE FROM products WHERE deleted=1");
+  await db.run("DELETE FROM admins WHERE deleted=1");
+  await db.run("DELETE FROM discounts WHERE deleted=1");
+  await db.run("DELETE FROM accounts WHERE deleted=1");
   res.json({ ok: true });
 });
 

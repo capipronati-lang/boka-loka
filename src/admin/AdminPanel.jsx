@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, saveProducts, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount } from "../lib/adminStore";
-import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User } from "lucide-react";
+import { getProducts, saveProducts, softDeleteProduct, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount, getTrash, restoreTrash, hardDeleteTrash, clearTrash } from "../lib/adminStore";
+import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User, ArchiveRestore, Trash } from "lucide-react";
 import AdminLogin from "./AdminLogin";
 
 function fileToDataUrl(file) {
@@ -44,6 +44,7 @@ export default function AdminPanel() {
   const [admins, setAdmins] = useState(() => getAdmins());
   const [discounts, setDiscounts] = useState(() => getDiscounts());
   const [accounts, setAccounts] = useState(() => { try { return getAccounts(); } catch { return []; } });
+  const [trash, setTrash] = useState({ products: [], admins: [], discounts: [], accounts: [] });
   const [toast, setToast] = useState(null);
 
   // keep in sync with localStorage events from other tabs
@@ -78,6 +79,10 @@ export default function AdminPanel() {
       m.fetchAccountsFromSql().then(d=> d && setAccounts(d)).catch(()=>{});
     });
   }, []);
+  const loadTrash = async () => {
+    try { const data = await getTrash(); if (data) setTrash(data); } catch {}
+  };
+  useEffect(() => { if (tab === "lixeira") loadTrash(); }, [tab]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -115,6 +120,7 @@ export default function AdminPanel() {
               { id: "logo", label: "Logo", icon: ImageIcon },
               { id: "admins", label: "Admins", icon: Users },
               { id: "contas", label: "Contas", icon: User },
+              { id: "lixeira", label: "Lixeira", icon: Trash },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab===t.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
                 <t.icon className="h-4 w-4" /> {t.label}
@@ -131,6 +137,7 @@ export default function AdminPanel() {
         {tab === "logo" && <LogoTab settings={settings} setSettings={setSettings} showToast={showToast} />}
         {tab === "admins" && <AdminsTab admins={admins} setAdmins={setAdmins} showToast={showToast} />}
         {tab === "contas" && <ContasTab accounts={accounts} setAccounts={setAccounts} showToast={showToast} />}
+        {tab === "lixeira" && <LixeiraTab trash={trash} loadTrash={loadTrash} setProducts={setProducts} setAdmins={setAdmins} setDiscounts={setDiscounts} setAccounts={setAccounts} showToast={showToast} />}
       </main>
 
       {toast && <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-5 py-3 text-sm font-bold text-white shadow-xl">{toast}</div>}
@@ -174,10 +181,11 @@ function ProdutosTab({ products, setProducts, showToast }) {
     reset();
   };
 
-  const handleDelete = (id) => {
-    if (!confirm("Remover este produto?")) return;
-    const next = products.filter(p=>p.id!==id);
-    saveProducts(next); setProducts(next); showToast("Removido");
+  const handleDelete = async (id) => {
+    if (!confirm("Remover este produto? Ele vai para a Lixeira e poderá ser recuperado.")) return;
+    try { await softDeleteProduct(id); } catch {}
+    setProducts(getProducts());
+    showToast("Produto movido para a Lixeira — SQL");
   };
 
   const onFile = async (file) => {
@@ -637,6 +645,80 @@ function ContasTab({ accounts, setAccounts, showToast }) {
           </div>
         ))}
         {accounts.length===0 && <div className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-500 ring-1 ring-zinc-200">Nenhuma conta. Adicione a primeira.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Lixeira ----------------
+function LixeiraTab({ trash, loadTrash, setProducts, setAdmins, setDiscounts, setAccounts, showToast }) {
+  const total = (trash.products?.length || 0) + (trash.admins?.length || 0) + (trash.discounts?.length || 0) + (trash.accounts?.length || 0);
+
+  const handleRestore = async (type, id) => {
+    try {
+      await restoreTrash(type, id);
+      showToast("Restaurado do SQL");
+      await loadTrash();
+      // recarrega listas principais
+      const m = await import("../lib/adminStore");
+      if (type === "products") { const d = await m.fetchProductsFromSql(); if (d) setProducts(d); else setProducts(m.getProducts()); }
+      if (type === "admins") { const d = await m.fetchAdminsFromSql(); if (d) setAdmins(d); else setAdmins(m.getAdmins()); }
+      if (type === "discounts") { const d = await m.fetchDiscountsFromSql(); if (d) setDiscounts(d); else setDiscounts(m.getDiscounts()); }
+      if (type === "accounts") { const d = await m.fetchAccountsFromSql(); if (d) setAccounts(d); else setAccounts(m.getAccounts()); }
+    } catch (e) { showToast(e.message); }
+  };
+  const handleHardDelete = async (type, id) => {
+    if (!confirm("Excluir permanentemente? Não poderá recuperar.")) return;
+    try {
+      await hardDeleteTrash(type, id);
+      showToast("Excluído permanentemente do SQL");
+      loadTrash();
+    } catch (e) { showToast(e.message); }
+  };
+  const handleClear = async () => {
+    if (!confirm("Limpar toda a lixeira permanentemente?")) return;
+    try { await clearTrash(); showToast("Lixeira esvaziada"); loadTrash(); } catch (e) { showToast(e.message); }
+  };
+
+  const Section = ({ title, items, type, render }) => (
+    <div className="rounded-[20px] bg-white p-4 ring-1 ring-zinc-200">
+      <div className="flex items-center justify-between">
+        <h3 className="font-black">{title} <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs">{items.length}</span></h3>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {items.length === 0 ? <div className="text-sm text-zinc-500">Vazio</div> : items.map(item => (
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+            <div className="min-w-0">
+              <div className="truncate font-bold text-sm">{render(item)}</div>
+              <div className="truncate font-mono text-xs text-zinc-500">{item.id} • {item.email || item.name || item.label || ""} {item.deletedAt ? "• " + new Date(item.deletedAt).toLocaleString("pt-BR") : ""}</div>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={()=>handleRestore(type, item.id)} className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-700"><ArchiveRestore className="h-3.5 w-3.5" /> Recuperar</button>
+              <button onClick={()=>handleHardDelete(type, item.id)} className="grid h-8 w-8 place-items-center rounded-full bg-white text-red-600 ring-1 ring-zinc-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Trash className="h-5 w-5 text-zinc-900" />
+          <h2 className="font-display text-[22px] font-black tracking-tight">Lixeira</h2>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold ring-1 ring-zinc-200">{total} itens • SQL soft delete</span>
+        </div>
+        {total > 0 && <button onClick={handleClear} className="rounded-full bg-red-600 px-4 py-2 text-xs font-black text-white hover:bg-red-700">Esvaziar lixeira</button>}
+      </div>
+      <p className="text-sm text-zinc-500">Itens apagados ficam aqui com <span className="font-mono font-bold">deleted=1</span> no SQL. Você pode <span className="font-bold">recuperar</span> (volta para o site) ou <span className="font-bold">excluir permanentemente</span> (DELETE). Ao adicionar/excluir, a página atualiza e o SQL é gravado.</p>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section title="Produtos" items={trash.products || []} type="products" render={(p)=> `${p.name} — R$ ${Number(p.price).toFixed(2)}`} />
+        <Section title="Contas" items={trash.accounts || []} type="accounts" render={(a)=> `${a.name} — ${a.email}`} />
+        <Section title="Admins" items={trash.admins || []} type="admins" render={(a)=> `${a.name} — ${a.email}`} />
+        <Section title="Descontos" items={trash.discounts || []} type="discounts" render={(d)=> `${d.label} — ${d.percent}%`} />
       </div>
     </div>
   );

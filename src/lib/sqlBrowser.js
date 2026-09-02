@@ -86,6 +86,11 @@ async function getDb() {
       createdAt TEXT
     );
   `);
+  // migração lixeira
+  for (const tbl of ["products","admins","discounts","accounts"]) {
+    try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN deleted INTEGER DEFAULT 0`); } catch {}
+    try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN deletedAt TEXT`); } catch {}
+  }
   // seed se vazio
   const prodCount = db.exec("SELECT COUNT(*) as c FROM products")[0]?.values[0]?.[0] || 0;
   if (prodCount === 0) {
@@ -120,16 +125,62 @@ function rowToProduct(row) {
 
 export async function sqlGetProducts() {
   const db = await getDb();
+  const res = db.exec("SELECT * FROM products WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
+  if (!res[0]) return [];
+  return res[0].values.map(rowToProduct);
+}
+export async function sqlGetProductsAll() {
+  const db = await getDb();
   const res = db.exec("SELECT * FROM products ORDER BY rowid");
   if (!res[0]) return [];
   return res[0].values.map(rowToProduct);
 }
+export async function sqlGetTrash() {
+  const db = await getDb();
+  const p = db.exec("SELECT * FROM products WHERE deleted=1 ORDER BY deletedAt DESC");
+  const a = db.exec("SELECT * FROM admins WHERE deleted=1 ORDER BY deletedAt DESC");
+  const d = db.exec("SELECT * FROM discounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  const ac = db.exec("SELECT * FROM accounts WHERE deleted=1 ORDER BY deletedAt DESC");
+  return {
+    products: p[0] ? p[0].values.map(rowToProduct) : [],
+    admins: a[0] ? a[0].values.map(r => ({ id: r[0], email: r[1], password: r[2], name: r[3], role: r[4], createdAt: r[5], deletedAt: r[7] })) : [],
+    discounts: d[0] ? d[0].values.map(r => ({ id: r[0], label: r[1], percent: Number(r[2]), category: r[3], productId: r[4], active: !!r[5], deletedAt: r[7] })) : [],
+    accounts: ac[0] ? ac[0].values.map(r => ({ id: r[0], name: r[1], email: r[2], phone: r[3], password: r[4], createdAt: r[5], deletedAt: r[7] })) : [],
+  };
+}
+export async function sqlRestore(type, id) {
+  const db = await getDb();
+  const allowed = ["products","admins","discounts","accounts"];
+  if (!allowed.includes(type)) throw new Error("tipo inválido");
+  db.run(`UPDATE ${type} SET deleted=0, deletedAt=NULL WHERE id=?`, [id]);
+  saveDb();
+}
+export async function sqlHardDelete(type, id) {
+  const db = await getDb();
+  const allowed = ["products","admins","discounts","accounts"];
+  if (!allowed.includes(type)) throw new Error("tipo inválido");
+  db.run(`DELETE FROM ${type} WHERE id=?`, [id]);
+  saveDb();
+}
+export async function sqlClearTrash() {
+  const db = await getDb();
+  db.exec("DELETE FROM products WHERE deleted=1");
+  db.exec("DELETE FROM admins WHERE deleted=1");
+  db.exec("DELETE FROM discounts WHERE deleted=1");
+  db.exec("DELETE FROM accounts WHERE deleted=1");
+  saveDb();
+}
 export async function sqlSaveProducts(products) {
   const db = await getDb();
-  db.exec("DELETE FROM products");
+  db.exec("DELETE FROM products WHERE deleted=0 OR deleted IS NULL");
   const stmt = db.prepare("INSERT INTO products (id, name, description, price, category, image, badge, popular) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   for (const p of products) stmt.run([p.id, p.name, p.desc || p.description, Number(p.price), p.category, p.image, p.badge, p.popular ? 1 : 0]);
   stmt.free();
+  saveDb();
+}
+export async function sqlSoftDeleteProduct(id) {
+  const db = await getDb();
+  db.run("UPDATE products SET deleted=1, deletedAt=? WHERE id=?", [new Date().toISOString(), id]);
   saveDb();
 }
 
@@ -155,7 +206,7 @@ export async function sqlSaveSettings(settings) {
 
 export async function sqlGetAdmins() {
   const db = await getDb();
-  const res = db.exec("SELECT id, email, password, name, role, createdAt FROM admins ORDER BY rowid");
+  const res = db.exec("SELECT id, email, password, name, role, createdAt FROM admins WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   if (!res[0]) return [];
   return res[0].values.map(r => ({ id: r[0], email: r[1], password: r[2], name: r[3], role: r[4], createdAt: r[5] }));
 }
@@ -171,9 +222,9 @@ export async function sqlAddAdmin({ email, password, name }) {
 }
 export async function sqlRemoveAdmin(id) {
   const db = await getDb();
-  const cnt = db.exec("SELECT COUNT(*) FROM admins")[0].values[0][0];
+  const cnt = db.exec("SELECT COUNT(*) FROM admins WHERE deleted=0 OR deleted IS NULL")[0].values[0][0];
   if (cnt <= 1) throw new Error("Mantenha ao menos 1 admin");
-  db.run("DELETE FROM admins WHERE id=?", [id]);
+  db.run("UPDATE admins SET deleted=1, deletedAt=? WHERE id=?", [new Date().toISOString(), id]);
   saveDb();
 }
 export async function sqlLogin(email, password) {
@@ -187,7 +238,7 @@ export async function sqlLogin(email, password) {
 
 export async function sqlGetDiscounts() {
   const db = await getDb();
-  const res = db.exec("SELECT id, label, percent, category, productId, active FROM discounts ORDER BY rowid");
+  const res = db.exec("SELECT id, label, percent, category, productId, active FROM discounts WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   if (!res[0]) return [];
   return res[0].values.map(r => ({ id: r[0], label: r[1], percent: Number(r[2]), category: r[3], productId: r[4], active: !!r[5] }));
 }
@@ -217,13 +268,13 @@ export async function sqlUpdateDiscount(id, patch) {
 }
 export async function sqlRemoveDiscount(id) {
   const db = await getDb();
-  db.run("DELETE FROM discounts WHERE id=?", [id]);
+  db.run("UPDATE discounts SET deleted=1, deletedAt=? WHERE id=?", [new Date().toISOString(), id]);
   saveDb();
 }
 
 export async function sqlGetAccounts() {
   const db = await getDb();
-  const res = db.exec("SELECT id, name, email, phone, password, createdAt FROM accounts ORDER BY rowid");
+  const res = db.exec("SELECT id, name, email, phone, password, createdAt FROM accounts WHERE deleted=0 OR deleted IS NULL ORDER BY rowid");
   if (!res[0]) return [];
   return res[0].values.map(r => ({ id: r[0], name: r[1], email: r[2], phone: r[3], password: r[4], createdAt: r[5] }));
 }
@@ -254,7 +305,7 @@ export async function sqlUpdateAccount(id, patch) {
 }
 export async function sqlRemoveAccount(id) {
   const db = await getDb();
-  db.run("DELETE FROM accounts WHERE id=?", [id]);
+  db.run("UPDATE accounts SET deleted=1, deletedAt=? WHERE id=?", [new Date().toISOString(), id]);
   saveDb();
 }
 

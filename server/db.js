@@ -67,6 +67,11 @@ export async function getDb() {
         createdAt TEXT
       );
     `);
+    // soft delete — lixeira (migração para DBs já existentes)
+    for (const tbl of ["products","admins","discounts","accounts"]) {
+      try { await db.exec(`ALTER TABLE ${tbl} ADD COLUMN deleted INTEGER DEFAULT 0`); } catch {}
+      try { await db.exec(`ALTER TABLE ${tbl} ADD COLUMN deletedAt TEXT`); } catch {}
+    }
     return db;
   });
   return dbPromise;

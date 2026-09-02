@@ -74,6 +74,15 @@ export function saveProducts(products) {
   apiSend("/products/bulk", "POST", products).catch(() => {});
   sqlBrowser.sqlSaveProducts(products).catch((e)=> console.warn("sqlBrowser saveProducts falhou", e));
 }
+export async function softDeleteProduct(id) {
+  await apiSend(`/products/${id}`, "DELETE").catch(()=>{});
+  await sqlBrowser.sqlSoftDeleteProduct(id).catch(()=>{});
+  try {
+    const products = getProducts().filter(p=>p.id!==id);
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
+    window.dispatchEvent(new Event("boka:products"));
+  } catch {}
+}
 export async function fetchProductsFromSql() {
   const data = await apiGet("/products");
   if (Array.isArray(data) && data.length) {
@@ -342,4 +351,30 @@ export async function hydrateFromSql() {
       fetchAccountsFromSql(),
     ]);
   } catch {}
+}
+
+// LIXEIRA — ver apagados e recuperar (SQL)
+export async function getTrash() {
+  const apiData = await apiGet("/trash");
+  if (apiData) return apiData;
+  try { return await sqlBrowser.sqlGetTrash(); } catch { return { products: [], admins: [], discounts: [], accounts: [] }; }
+}
+export async function restoreTrash(type, id) {
+  const apiRes = await apiSend(`/trash/restore/${type}/${id}`, "POST");
+  if (apiRes !== null) {
+    await hydrateFromSql();
+    return apiRes;
+  }
+  await sqlBrowser.sqlRestore(type, id);
+  await hydrateFromSql();
+}
+export async function hardDeleteTrash(type, id) {
+  const apiRes = await apiSend(`/trash/${type}/${id}`, "DELETE");
+  if (apiRes !== null) return apiRes;
+  await sqlBrowser.sqlHardDelete(type, id);
+}
+export async function clearTrash() {
+  const apiRes = await apiSend("/trash/clear", "DELETE");
+  if (apiRes !== null) return apiRes;
+  await sqlBrowser.sqlClearTrash();
 }
