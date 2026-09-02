@@ -1,4 +1,4 @@
-import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS, DEFAULT_ADMINS, DEFAULT_DISCOUNTS } from "./defaultData";
+import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS, DEFAULT_ADMINS, DEFAULT_DISCOUNTS, DEFAULT_ACCOUNTS } from "./defaultData";
 import * as sqlBrowser from "./sqlBrowser.js";
 
 const API = "/api";
@@ -7,6 +7,7 @@ const KEYS = {
   SETTINGS: "boka_settings",
   ADMINS: "boka_admins",
   DISCOUNTS: "boka_discounts",
+  ACCOUNTS: "boka_accounts",
   SESSION: "boka_admin_session",
 };
 
@@ -189,6 +190,60 @@ export function removeAdmin(id) {
   sqlBrowser.sqlRemoveAdmin(id).catch(()=>{});
 }
 
+// ACCOUNTS (contas de clientes)
+export function getAccounts() {
+  const raw = localStorage.getItem(KEYS.ACCOUNTS);
+  if (!raw) {
+    localStorage.setItem(KEYS.ACCOUNTS, JSON.stringify(DEFAULT_ACCOUNTS));
+    return DEFAULT_ACCOUNTS;
+  }
+  const parsed = safeParse(raw, DEFAULT_ACCOUNTS);
+  return Array.isArray(parsed) ? parsed : DEFAULT_ACCOUNTS;
+}
+export function saveAccounts(accounts) {
+  localStorage.setItem(KEYS.ACCOUNTS, JSON.stringify(accounts));
+  window.dispatchEvent(new Event("boka:accounts"));
+}
+export async function fetchAccountsFromSql() {
+  const data = await apiGet("/accounts");
+  if (Array.isArray(data)) {
+    try { localStorage.setItem(KEYS.ACCOUNTS, JSON.stringify(data)); window.dispatchEvent(new Event("boka:accounts")); } catch {}
+    return data;
+  }
+  const hasLocal = localStorage.getItem(KEYS.ACCOUNTS);
+  if (hasLocal) return null;
+  const browser = await sqlBrowser.sqlGetAccounts().catch(()=>null);
+  if (Array.isArray(browser)) {
+    try { localStorage.setItem(KEYS.ACCOUNTS, JSON.stringify(browser)); window.dispatchEvent(new Event("boka:accounts")); } catch {}
+    return browser;
+  }
+  return null;
+}
+export function addAccount({ name, email, phone, password }) {
+  const accounts = getAccounts();
+  if (accounts.find(a=> a.email.toLowerCase()===email.toLowerCase())) throw new Error("E-mail já cadastrado");
+  const acc = { id: Date.now().toString(), name, email, phone: phone||"", password: password||"", createdAt: new Date().toISOString() };
+  const next = [...accounts, acc];
+  saveAccounts(next);
+  apiSend("/accounts", "POST", acc).catch(()=>{});
+  sqlBrowser.sqlAddAccount({ name, email, phone, password }).catch(()=>{});
+  return acc;
+}
+export function updateAccount(id, patch) {
+  const accounts = getAccounts();
+  const next = accounts.map(a=> a.id===id ? { ...a, ...patch } : a);
+  saveAccounts(next);
+  apiSend(`/accounts/${id}`, "PUT", patch).catch(()=>{});
+  sqlBrowser.sqlUpdateAccount(id, patch).catch(()=>{});
+  return next.find(a=>a.id===id);
+}
+export function removeAccount(id) {
+  const next = getAccounts().filter(a=>a.id!==id);
+  saveAccounts(next);
+  apiSend(`/accounts/${id}`, "DELETE").catch(()=>{});
+  sqlBrowser.sqlRemoveAccount(id).catch(()=>{});
+}
+
 // DISCOUNTS
 export function getDiscounts() {
   const raw = localStorage.getItem(KEYS.DISCOUNTS);
@@ -284,6 +339,7 @@ export async function hydrateFromSql() {
       fetchSettingsFromSql(),
       fetchAdminsFromSql(),
       fetchDiscountsFromSql(),
+      fetchAccountsFromSql(),
     ]);
   } catch {}
 }

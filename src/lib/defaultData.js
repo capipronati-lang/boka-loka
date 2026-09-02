@@ -18,6 +18,10 @@ export const DEFAULT_ADMINS = [
   { id: "1", email: "admin@bokaloka.com", password: "boka123", name: "Admin Master", role: "super", createdAt: new Date().toISOString() },
 ];
 
+export const DEFAULT_ACCOUNTS = [
+  { id: "acc1", name: "Cliente Demo", email: "cliente@email.com", phone: "(48) 99999-9999", password: "123456", createdAt: new Date().toISOString() },
+];
+
 export const DEFAULT_DISCOUNTS = [
   // { id, label, percent, category, productId, active }
 ];

@@ -57,6 +57,15 @@ export async function getDb() {
         productId TEXT,
         active INTEGER DEFAULT 1
       );
+
+      CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        phone TEXT,
+        password TEXT,
+        createdAt TEXT
+      );
     `);
     return db;
   });

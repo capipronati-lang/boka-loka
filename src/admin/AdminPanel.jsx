@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, saveProducts, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession } from "../lib/adminStore";
-import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload } from "lucide-react";
+import { getProducts, saveProducts, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount } from "../lib/adminStore";
+import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User } from "lucide-react";
 import AdminLogin from "./AdminLogin";
 
 function fileToDataUrl(file) {
@@ -43,6 +43,7 @@ export default function AdminPanel() {
   const [settings, setSettings] = useState(() => getSettings());
   const [admins, setAdmins] = useState(() => getAdmins());
   const [discounts, setDiscounts] = useState(() => getDiscounts());
+  const [accounts, setAccounts] = useState(() => { try { return getAccounts(); } catch { return []; } });
   const [toast, setToast] = useState(null);
 
   // keep in sync with localStorage events from other tabs
@@ -52,16 +53,19 @@ export default function AdminPanel() {
       setSettings(getSettings());
       setAdmins(getAdmins());
       setDiscounts(getDiscounts());
+      try { setAccounts(getAccounts()); } catch {}
     };
     window.addEventListener("boka:products", h);
     window.addEventListener("boka:settings", h);
     window.addEventListener("boka:admins", h);
     window.addEventListener("boka:discounts", h);
+    window.addEventListener("boka:accounts", h);
     return () => {
       window.removeEventListener("boka:products", h);
       window.removeEventListener("boka:settings", h);
       window.removeEventListener("boka:admins", h);
       window.removeEventListener("boka:discounts", h);
+      window.removeEventListener("boka:accounts", h);
     };
   }, []);
   // hidrata do SQL se /api estiver vivo
@@ -71,6 +75,7 @@ export default function AdminPanel() {
       m.fetchSettingsFromSql().then(d=> d && setSettings(d)).catch(()=>{});
       m.fetchAdminsFromSql().then(d=> d && setAdmins(d)).catch(()=>{});
       m.fetchDiscountsFromSql().then(d=> d && setDiscounts(d)).catch(()=>{});
+      m.fetchAccountsFromSql().then(d=> d && setAccounts(d)).catch(()=>{});
     });
   }, []);
 
@@ -109,6 +114,7 @@ export default function AdminPanel() {
               { id: "config", label: "Loja", icon: Settings },
               { id: "logo", label: "Logo", icon: ImageIcon },
               { id: "admins", label: "Admins", icon: Users },
+              { id: "contas", label: "Contas", icon: User },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab===t.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
                 <t.icon className="h-4 w-4" /> {t.label}
@@ -124,6 +130,7 @@ export default function AdminPanel() {
         {tab === "config" && <ConfigTab settings={settings} setSettings={setSettings} showToast={showToast} />}
         {tab === "logo" && <LogoTab settings={settings} setSettings={setSettings} showToast={showToast} />}
         {tab === "admins" && <AdminsTab admins={admins} setAdmins={setAdmins} showToast={showToast} />}
+        {tab === "contas" && <ContasTab accounts={accounts} setAccounts={setAccounts} showToast={showToast} />}
       </main>
 
       {toast && <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-5 py-3 text-sm font-bold text-white shadow-xl">{toast}</div>}
@@ -547,6 +554,89 @@ function AdminsTab({ admins, setAdmins, showToast }) {
             <button onClick={()=>handleRemove(a.id)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-red-600 ring-1 ring-zinc-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Contas (clientes) ----------------
+function ContasTab({ accounts, setAccounts, showToast }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pass, setPass] = useState("");
+  const [editing, setEditing] = useState(null);
+
+  const handleAdd = () => {
+    if (!name.trim() || !email.trim()) { showToast("Nome e e-mail obrigatórios"); return; }
+    try {
+      const created = addAccount({ name: name.trim(), email: email.trim(), phone: phone.trim(), password: pass });
+      setAccounts(getAccounts());
+      setName(""); setEmail(""); setPhone(""); setPass("");
+      showToast(`Conta ${created.email} criada no SQL`);
+    } catch (e) { showToast(e.message); }
+  };
+  const handleUpdate = () => {
+    if (!editing) return;
+    try {
+      updateAccount(editing, { name: name.trim(), email: email.trim(), phone: phone.trim(), password: pass || undefined });
+      setAccounts(getAccounts());
+      setEditing(null); setName(""); setEmail(""); setPhone(""); setPass("");
+      showToast("Conta atualizada no SQL");
+    } catch (e) { showToast(e.message); }
+  };
+  const startEdit = (acc) => {
+    setEditing(acc.id);
+    setName(acc.name); setEmail(acc.email); setPhone(acc.phone || ""); setPass("");
+  };
+  const handleRemove = (id) => {
+    if (!confirm("Excluir esta conta?")) return;
+    try { removeAccount(id); setAccounts(getAccounts()); showToast("Conta excluída do SQL"); } catch (e) { showToast(e.message); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <User className="h-5 w-5 text-zinc-900" />
+        <h2 className="font-display text-[22px] font-black tracking-tight">Contas</h2>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold ring-1 ring-zinc-200">{accounts.length} contas • SQL</span>
+      </div>
+      <p className="text-sm text-zinc-500">Todas as contas ficam em <span className="font-mono font-bold">SQL: accounts(id, name, email, phone, password, createdAt)</span>. Ao adicionar/editar/excluir, a página atualiza e o SQL é gravado (local `sql.js` + `server/boka.db` se rodando `npm run dev`).</p>
+
+      <div className="rounded-[20px] bg-white p-4 ring-1 ring-zinc-200 sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome *" className="rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@exemplo.com *" type="email" className="rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Telefone (48) 9..." className="rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+          <input value={pass} onChange={e=>setPass(e.target.value)} placeholder={editing ? "Nova senha (deixe vazio para manter)" : "Senha"} type="text" className="rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+        </div>
+        <div className="mt-3 flex gap-2">
+          {editing ? (
+            <>
+              <button onClick={handleUpdate} className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-black text-white hover:bg-black"><Save className="h-4 w-4" /> Salvar</button>
+              <button onClick={()=>{ setEditing(null); setName(""); setEmail(""); setPhone(""); setPass(""); }} className="rounded-full bg-white px-4 py-2 text-sm font-black ring-1 ring-zinc-200">Cancelar</button>
+            </>
+          ) : (
+            <button onClick={handleAdd} className="inline-flex items-center gap-2 rounded-full bg-[#e30613] px-5 py-2.5 text-sm font-black text-white hover:bg-[#b8050f]"><Plus className="h-4 w-4" /> Adicionar conta</button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {accounts.map(acc=> (
+          <div key={acc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+            <div>
+              <div className="font-black">{acc.name} <span className="ml-2 font-mono text-xs text-zinc-500">#{acc.id.slice(0,6)}</span></div>
+              <div className="font-mono text-xs text-zinc-500">{acc.email} • {acc.phone || "sem telefone"}</div>
+              <div className="text-xs text-zinc-400">Criado em {new Date(acc.createdAt).toLocaleDateString("pt-BR")}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>startEdit(acc)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-50"><Pencil className="h-4 w-4" /></button>
+              <button onClick={()=>handleRemove(acc.id)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-red-600 ring-1 ring-zinc-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          </div>
+        ))}
+        {accounts.length===0 && <div className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-500 ring-1 ring-zinc-200">Nenhuma conta. Adicione a primeira.</div>}
       </div>
     </div>
   );

@@ -77,6 +77,14 @@ async function getDb() {
       productId TEXT,
       active INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      password TEXT,
+      createdAt TEXT
+    );
   `);
   // seed se vazio
   const prodCount = db.exec("SELECT COUNT(*) as c FROM products")[0]?.values[0]?.[0] || 0;
@@ -210,6 +218,43 @@ export async function sqlUpdateDiscount(id, patch) {
 export async function sqlRemoveDiscount(id) {
   const db = await getDb();
   db.run("DELETE FROM discounts WHERE id=?", [id]);
+  saveDb();
+}
+
+export async function sqlGetAccounts() {
+  const db = await getDb();
+  const res = db.exec("SELECT id, name, email, phone, password, createdAt FROM accounts ORDER BY rowid");
+  if (!res[0]) return [];
+  return res[0].values.map(r => ({ id: r[0], name: r[1], email: r[2], phone: r[3], password: r[4], createdAt: r[5] }));
+}
+export async function sqlAddAccount({ name, email, phone, password }) {
+  const db = await getDb();
+  const exists = db.exec(`SELECT 1 FROM accounts WHERE lower(email)=lower('${email.replace(/'/g, "''")}')`);
+  if (exists[0] && exists[0].values.length) throw new Error("E-mail já cadastrado");
+  const id = Date.now().toString();
+  db.run("INSERT INTO accounts (id, name, email, phone, password, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, name, email.toLowerCase(), phone || "", password || "", new Date().toISOString()]);
+  saveDb();
+  return { id, name, email, phone };
+}
+export async function sqlUpdateAccount(id, patch) {
+  const db = await getDb();
+  const curRes = db.exec(`SELECT name, email, phone, password FROM accounts WHERE id='${id.replace(/'/g,"''")}'`);
+  if (!curRes[0] || !curRes[0].values[0]) throw new Error("Conta não encontrada");
+  const cur = curRes[0].values[0];
+  const next = {
+    name: patch.name ?? cur[0],
+    email: patch.email ? patch.email.toLowerCase() : cur[1],
+    phone: patch.phone ?? cur[2],
+    password: patch.password ?? cur[3],
+  };
+  db.run("UPDATE accounts SET name=?, email=?, phone=?, password=? WHERE id=?",
+    [next.name, next.email, next.phone, next.password, id]);
+  saveDb();
+}
+export async function sqlRemoveAccount(id) {
+  const db = await getDb();
+  db.run("DELETE FROM accounts WHERE id=?", [id]);
   saveDb();
 }
 

@@ -230,6 +230,44 @@ app.delete("/api/discounts/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- ACCOUNTS (contas de clientes) ---
+app.get("/api/accounts", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM accounts ORDER BY rowid");
+  res.json(rows);
+});
+app.post("/api/accounts", async (req, res) => {
+  const db = await getDb();
+  const { name, email, phone, password } = req.body;
+  if (!name || !email) return res.status(400).json({ error: "name e email required" });
+  const id = Date.now().toString();
+  try {
+    await db.run("INSERT INTO accounts (id, name, email, phone, password, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+      id, name, email.toLowerCase(), phone || "", password || "", new Date().toISOString());
+    const row = await db.get("SELECT * FROM accounts WHERE id=?", id);
+    res.status(201).json(row);
+  } catch (e) {
+    if (e.message.includes("UNIQUE")) return res.status(409).json({ error: "E-mail já cadastrado" });
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put("/api/accounts/:id", async (req, res) => {
+  const db = await getDb();
+  const { id } = req.params;
+  const existing = await db.get("SELECT * FROM accounts WHERE id=?", id);
+  if (!existing) return res.status(404).json({ error: "Conta não encontrada" });
+  const { name, email, phone, password } = req.body;
+  await db.run("UPDATE accounts SET name=?, email=?, phone=?, password=? WHERE id=?",
+    name ?? existing.name, email ? email.toLowerCase() : existing.email, phone ?? existing.phone, password ?? existing.password, id);
+  const row = await db.get("SELECT * FROM accounts WHERE id=?", id);
+  res.json(row);
+});
+app.delete("/api/accounts/:id", async (req, res) => {
+  const db = await getDb();
+  await db.run("DELETE FROM accounts WHERE id=?", req.params.id);
+  res.json({ ok: true });
+});
+
 // health
 app.get("/api/health", (req, res) => res.json({ ok: true, db: "sqlite" }));
 
