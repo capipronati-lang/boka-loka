@@ -82,6 +82,7 @@ export default function AdminPanel() {
   const loadTrash = async () => {
     try { const data = await getTrash(); if (data) setTrash(data); } catch {}
   };
+  useEffect(() => { loadTrash(); }, []);
   useEffect(() => { if (tab === "lixeira") loadTrash(); }, [tab]);
 
   const showToast = (msg) => {
@@ -110,9 +111,9 @@ export default function AdminPanel() {
             <button onClick={() => { clearSession(); setSession(null); }} className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-xs font-black text-white hover:bg-black"><LogOut className="h-4 w-4" /> Sair</button>
           </div>
         </div>
-        {/* tabs */}
+        {/* tabs + lixeira destacada */}
         <div className="mx-auto max-w-[1280px] px-4 sm:px-6">
-          <div className="flex gap-1 overflow-x-auto py-2">
+          <div className="flex gap-1 overflow-x-auto py-2 scrollbar-thin">
             {[
               { id: "produtos", label: "Produtos", icon: ShoppingBag },
               { id: "descontos", label: "Descontos", icon: Percent },
@@ -120,23 +121,26 @@ export default function AdminPanel() {
               { id: "logo", label: "Logo", icon: ImageIcon },
               { id: "admins", label: "Admins", icon: Users },
               { id: "contas", label: "Contas", icon: User },
-              { id: "lixeira", label: "Lixeira", icon: Trash },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab===t.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
                 <t.icon className="h-4 w-4" /> {t.label}
               </button>
             ))}
+            <button onClick={() => setTab("lixeira")} className={`ml-2 inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab==="lixeira" ? "bg-red-600 text-white ring-red-600" : "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"}`}>
+              <Trash className="h-4 w-4" /> Lixeira {(trash.products?.length + trash.admins?.length + trash.discounts?.length + trash.accounts?.length) > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab==="lixeira" ? "bg-white text-red-600" : "bg-red-600 text-white"}`}>{trash.products.length + trash.admins.length + trash.discounts.length + trash.accounts.length}</span>}
+            </button>
           </div>
+          <div className="pb-1 text-xs font-bold text-zinc-500">↔️ Arraste as abas para ver todas • <button onClick={()=>setTab("lixeira")} className="font-black text-red-600 underline">Ver excluídos na Lixeira</button></div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6">
-        {tab === "produtos" && <ProdutosTab products={products} setProducts={setProducts} showToast={showToast} />}
-        {tab === "descontos" && <DescontosTab products={products} discounts={discounts} setDiscounts={setDiscounts} showToast={showToast} />}
+        {tab === "produtos" && <ProdutosTab products={products} setProducts={setProducts} showToast={showToast} loadTrash={loadTrash} />}
+        {tab === "descontos" && <DescontosTab products={products} discounts={discounts} setDiscounts={setDiscounts} showToast={showToast} loadTrash={loadTrash} />}
         {tab === "config" && <ConfigTab settings={settings} setSettings={setSettings} showToast={showToast} />}
         {tab === "logo" && <LogoTab settings={settings} setSettings={setSettings} showToast={showToast} />}
-        {tab === "admins" && <AdminsTab admins={admins} setAdmins={setAdmins} showToast={showToast} />}
-        {tab === "contas" && <ContasTab accounts={accounts} setAccounts={setAccounts} showToast={showToast} />}
+        {tab === "admins" && <AdminsTab admins={admins} setAdmins={setAdmins} showToast={showToast} loadTrash={loadTrash} />}
+        {tab === "contas" && <ContasTab accounts={accounts} setAccounts={setAccounts} showToast={showToast} loadTrash={loadTrash} />}
         {tab === "lixeira" && <LixeiraTab trash={trash} loadTrash={loadTrash} setProducts={setProducts} setAdmins={setAdmins} setDiscounts={setDiscounts} setAccounts={setAccounts} showToast={showToast} />}
       </main>
 
@@ -146,7 +150,7 @@ export default function AdminPanel() {
 }
 
 // ---------------- Produtos ----------------
-function ProdutosTab({ products, setProducts, showToast }) {
+function ProdutosTab({ products, setProducts, showToast, loadTrash }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: "", desc: "", price: "", category: "Clássicos", image: "", badge: "Clássico", popular: false });
   const [imageMode, setImageMode] = useState("url"); // url | upload
@@ -185,6 +189,7 @@ function ProdutosTab({ products, setProducts, showToast }) {
     if (!confirm("Remover este produto? Ele vai para a Lixeira e poderá ser recuperado.")) return;
     try { await softDeleteProduct(id); } catch {}
     setProducts(getProducts());
+    loadTrash?.();
     showToast("Produto movido para a Lixeira — SQL");
   };
 
@@ -202,6 +207,10 @@ function ProdutosTab({ products, setProducts, showToast }) {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 ring-1 ring-red-200 flex flex-wrap items-center justify-between gap-2">
+        <span>🗑️ Excluídos vão para a Lixeira — clique na aba <b>Lixeira</b> acima para ver e recuperar</span>
+        <span className="text-xs font-medium">SQL soft delete</span>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-[22px] font-black tracking-tight">Produtos</h2>
@@ -292,7 +301,7 @@ function ProdutosTab({ products, setProducts, showToast }) {
 }
 
 // ---------------- Descontos ----------------
-function DescontosTab({ products, discounts, setDiscounts, showToast }) {
+function DescontosTab({ products, discounts, setDiscounts, showToast, loadTrash }) {
   const [form, setForm] = useState({ label: "", percent: "", category: "Todos", productId: "", active: true });
   const categories = useMemo(() => ["Todos", ...new Set(products.map(p=>p.category))], [products]);
 
@@ -333,10 +342,10 @@ function DescontosTab({ products, discounts, setDiscounts, showToast }) {
     saveDiscounts(next); setDiscounts(next);
   };
   const remove = async (id) => {
-    if (!confirm("Remover desconto?")) return;
+    if (!confirm("Remover desconto? Vai para a Lixeira.")) return;
     try { await fetch(`/api/discounts/${id}`, { method: "DELETE" }); } catch {}
     const next = discounts.filter(d=>d.id!==id);
-    saveDiscounts(next); setDiscounts(next); showToast("Removido");
+    saveDiscounts(next); setDiscounts(next); loadTrash?.(); showToast("Desconto movido para Lixeira");
   };
 
   return (
@@ -509,7 +518,7 @@ function LogoTab({ settings, setSettings, showToast }) {
 }
 
 // ---------------- Admins ----------------
-function AdminsTab({ admins, setAdmins, showToast }) {
+function AdminsTab({ admins, setAdmins, showToast, loadTrash }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -526,11 +535,12 @@ function AdminsTab({ admins, setAdmins, showToast }) {
     }
   };
   const handleRemove = (id) => {
-    if (!confirm("Remover este admin?")) return;
+    if (!confirm("Remover este admin? Vai para a Lixeira.")) return;
     try {
       removeAdmin(id);
       setAdmins(getAdmins());
-      showToast("Admin removido");
+      loadTrash?.();
+      showToast("Admin movido para a Lixeira");
     } catch (e) { showToast(e.message); }
   };
 
@@ -568,7 +578,7 @@ function AdminsTab({ admins, setAdmins, showToast }) {
 }
 
 // ---------------- Contas (clientes) ----------------
-function ContasTab({ accounts, setAccounts, showToast }) {
+function ContasTab({ accounts, setAccounts, showToast, loadTrash }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -598,8 +608,8 @@ function ContasTab({ accounts, setAccounts, showToast }) {
     setName(acc.name); setEmail(acc.email); setPhone(acc.phone || ""); setPass("");
   };
   const handleRemove = (id) => {
-    if (!confirm("Excluir esta conta?")) return;
-    try { removeAccount(id); setAccounts(getAccounts()); showToast("Conta excluída do SQL"); } catch (e) { showToast(e.message); }
+    if (!confirm("Excluir esta conta? Vai para a Lixeira.")) return;
+    try { removeAccount(id); setAccounts(getAccounts()); loadTrash?.(); showToast("Conta movida para a Lixeira"); } catch (e) { showToast(e.message); }
   };
 
   return (
