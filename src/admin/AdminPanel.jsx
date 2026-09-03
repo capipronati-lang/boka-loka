@@ -701,7 +701,7 @@ function LogoTab({ settings, setSettings, showToast }) {
               <input type="file" accept="image/*,.svg" onChange={e=>onFile(e.target.files?.[0])} className="text-sm" />
             </label>
             <button onClick={save} className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-black text-white hover:bg-black">Salvar logo</button>
-            <button onClick={()=>{ setLogo("/logo-nova.png"); saveSettings({ logo: "/logo-nova.png" }); setSettings(getSettings()); showToast("Logo restaurada"); }} className="ml-2 rounded-full bg-white px-4 py-2 text-xs font-black ring-1 ring-zinc-200">Restaurar padrão</button>
+            <button onClick={()=>{ setLogo("/logo-nova.avif"); saveSettings({ logo: "/logo-nova.avif" }); setSettings(getSettings()); showToast("Logo restaurada"); }} className="ml-2 rounded-full bg-white px-4 py-2 text-xs font-black ring-1 ring-zinc-200">Restaurar padrão</button>
           </div>
           <div className="grid place-items-center rounded-2xl bg-[#fffbf0] p-6 ring-1 ring-zinc-200">
             <div className="text-xs font-black tracking-wide text-zinc-500">PRÉVIA</div>
