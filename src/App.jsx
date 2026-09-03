@@ -817,7 +817,7 @@ export default function App() {
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-black tracking-wide ${isOpen ? "bg-emerald-500 text-white" : "bg-zinc-200 text-zinc-600"}`}>{isOpen ? "● ABERTO" : "○ FECHADO"}</span>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500"><Clock className="h-3.5 w-3.5" />{nextOpen} — verificado</div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500"><Clock className="h-3.5 w-3.5" />Todos os dias das {String(SETTINGS.openHour).padStart(2,"0")}h às {SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h — verificado</div>
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <a href={GMAPS_LINK_DYN} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#e30613] px-6 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(227,6,19,0.25)] hover:bg-[#b8050f] active:scale-[0.98]"><Navigation className="h-4 w-4" />Como chegar</a>
                   <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Chamar no WhatsApp</a>
@@ -876,7 +876,7 @@ export default function App() {
             <div>
               <div className="text-xs font-black tracking-[0.14em] text-white">ATENDIMENTO</div>
               <ul className="mt-4 space-y-2.5 text-sm font-medium text-zinc-400">
-                <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-zinc-500" />{nextOpen}</li>
+                <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-zinc-500" />Todos os dias das {String(SETTINGS.openHour).padStart(2,"0")}h às {SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h</li>
                 <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-zinc-500" />{SETTINGS.address}</li>
                 <li><a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-white hover:text-[#ffc300]">Pedir pelo iFood<ArrowUpRight className="h-3.5 w-3.5" /></a></li>
                 <li><a href={GMAPS_LINK_DYN} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-zinc-300 hover:text-white">Como chegar no Google Maps<Navigation className="h-3.5 w-3.5" /></a></li>
