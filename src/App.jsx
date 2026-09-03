@@ -510,7 +510,7 @@ export default function App() {
       "BEGIN:VCARD", "VERSION:3.0", "FN:Boka Loka Lanches", "ORG:Boka Loka Lanches",
       `TEL;TYPE=CELL,VOICE:${SETTINGS.whatsappNumber}`, `TEL;TYPE=WORK,VOICE:${SETTINGS.phoneTel}`,
       `ADR;TYPE=WORK:;;${SETTINGS.address};;;;`, `URL:${SETTINGS.instagramUrl}`,
-      `NOTE:Hamburgueria em Tubarão/SC — ${nextOpen}`,
+      `NOTE:Hamburgueria em Tubarao/SC — Todos os dias ${String(SETTINGS.openHour).padStart(2,"0")}h as ${SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h`,
       "END:VCARD",
     ].join("\r\n");
     const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
