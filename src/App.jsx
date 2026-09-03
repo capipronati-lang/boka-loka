@@ -325,7 +325,14 @@ export default function App() {
   }, []);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/boka-loka-logo.svg", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/boka-loka-logo.svg", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS = {
+    ...SETTINGS_RAW,
+    whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,
+    phoneTel: SETTINGS_RAW.phoneTel || PHONE_TEL,
+    address: SETTINGS_RAW.address || ADDRESS,
+    gmapsLink: SETTINGS_RAW.gmapsLink || GMAPS_LINK,
+  };
   const GMAPS_LINK_DYN = SETTINGS.gmapsLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(SETTINGS.address)}`;
   const GMAPS_EMBED_DYN = `https://maps.google.com/maps?q=${encodeURIComponent(SETTINGS.address)}&t=&z=17&ie=UTF8&iwloc=&output=embed`;
   // helper for discounted price
@@ -428,19 +435,30 @@ export default function App() {
       setTimeout(() => setToast(null), 2000);
       return;
     }
+    const rawNumber = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER || "").replace(/\D/g, "");
+    if (!rawNumber || rawNumber.length < 10) {
+      setToast("WhatsApp não configurado. Verifique em Admin > Loja");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
     const lines = cart.map((item) => {
       const prod = EFFECTIVE_PRODUCTS.find((p) => p.id === item.id);
       if (!prod) return "";
       const base = `• ${item.qty}x ${prod.name} — ${formatBRL((getDisplayPrice(prod) + (item.extrasPrice || 0)) * item.qty)}`;
-      const extras = item.extras?.length ? `%0A  + ${item.extras.map((id) => EXTRAS_CATALOG.find((e) => e.id === id)?.name).join(", ")}` : "";
-      const removed = item.removed?.length ? `%0A  - sem: ${item.removed.join(", ")}` : "";
-      const obs = item.observation ? `%0A  obs: ${item.observation}` : "";
+      const extras = item.extras?.length ? `\n  + ${item.extras.map((id) => EXTRAS_CATALOG.find((e) => e.id === id)?.name).join(", ")}` : "";
+      const removed = item.removed?.length ? `\n  - sem: ${item.removed.join(", ")}` : "";
+      const obs = item.observation ? `\n  obs: ${item.observation}` : "";
       return base + extras + removed + obs;
-    }).join("%0A");
+    }).join("\n");
     const total = formatBRL(cartTotal);
     const payLabel = paymentMethod === "pix" ? "Pix" : paymentMethod === "card" ? "Cartão" : paymentMethod === "money" ? "Dinheiro" : "Pix";
-    const msg = `Olá! Quero fazer um pedido na *Boka Loka Lanches*:%0A%0A${lines}%0A%0A*Total: ${total}*%0A*Pagamento: ${payLabel}*%0A%0APode confirmar meu pedido? 🍔`;
-    window.open(`https://wa.me/${SETTINGS.whatsappNumber}?text=${msg}`, "_blank");
+    const msgRaw = `Olá! Quero fazer um pedido na *Boka Loka Lanches*:\n\n${lines}\n\n*Total: ${total}*\n*Pagamento: ${payLabel}*\n\nPode confirmar meu pedido? 🍔`;
+    const msg = encodeURIComponent(msgRaw);
+    const url = `https://wa.me/${rawNumber}?text=${msg}`;
+    const win = window.open(url, "_blank");
+    if (!win) {
+      window.location.href = url;
+    }
   };
 
   const handleCall = () => {

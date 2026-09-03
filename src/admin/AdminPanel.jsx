@@ -55,18 +55,23 @@ export default function AdminPanel() {
       setAdmins(getAdmins());
       setDiscounts(getDiscounts());
       try { setAccounts(getAccounts()); } catch {}
+      loadTrash();
     };
     window.addEventListener("boka:products", h);
     window.addEventListener("boka:settings", h);
     window.addEventListener("boka:admins", h);
     window.addEventListener("boka:discounts", h);
     window.addEventListener("boka:accounts", h);
+    window.addEventListener("boka:deleted_history", h);
+    window.addEventListener("storage", h);
     return () => {
       window.removeEventListener("boka:products", h);
       window.removeEventListener("boka:settings", h);
       window.removeEventListener("boka:admins", h);
       window.removeEventListener("boka:discounts", h);
       window.removeEventListener("boka:accounts", h);
+      window.removeEventListener("boka:deleted_history", h);
+      window.removeEventListener("storage", h);
     };
   }, []);
   // hidrata do SQL se /api estiver vivo
@@ -193,9 +198,11 @@ function ProdutosTab({ products, setProducts, showToast, loadTrash, trash, setTa
 
   const handleDelete = async (id) => {
     if (!confirm("Remover este produto? Ele vai para o Histórico (30 dias) e poderá ser recuperado.")) return;
-    try { await softDeleteProduct(id); } catch {}
+    try { await softDeleteProduct(id); } catch (e) { console.error(e); }
+    // garante que sqlBrowser terminou (import dinâmico pode demorar)
+    await new Promise(r=>setTimeout(r, 150));
     setProducts(getProducts());
-    loadTrash?.();
+    await loadTrash?.();
     showToast("Produto movido para Histórico 30 dias");
   };
 

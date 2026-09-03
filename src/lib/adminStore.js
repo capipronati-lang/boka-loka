@@ -9,6 +9,7 @@ const KEYS = {
   DISCOUNTS: "boka_discounts",
   ACCOUNTS: "boka_accounts",
   SESSION: "boka_admin_session",
+  DELETED_HISTORY: "boka_deleted_products_history",
 };
 
 // SQL no navegador (100% grátis) — usa sql.js + localStorage, sem servidor
@@ -75,12 +76,34 @@ export function saveProducts(products) {
   sqlBrowser.sqlSaveProducts(products).catch((e)=> console.warn("sqlBrowser saveProducts falhou", e));
 }
 export async function softDeleteProduct(id) {
+  // guarda snapshot para histórico local (fallback 100% Vercel estático)
+  let deletedProduct = null;
+  try {
+    const all = getProducts();
+    deletedProduct = all.find(p=>p.id===id) || null;
+  } catch {}
   await apiSend(`/products/${id}`, "DELETE").catch(()=>{});
   await sqlBrowser.sqlSoftDeleteProduct(id).catch(()=>{});
   try {
     const products = getProducts().filter(p=>p.id!==id);
     localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
     window.dispatchEvent(new Event("boka:products"));
+  } catch {}
+  // fallback histórico em localStorage (30 dias) - garante que vai para Histórico mesmo sem SQL
+  try {
+    if (deletedProduct) {
+      const history = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+      const entry = { ...deletedProduct, deletedAt: new Date().toISOString(), deleted: true };
+      // evita duplicatas
+      const filtered = history.filter(h=>h.id!==id);
+      filtered.unshift(entry);
+      // mantém apenas últimos 100 e dentro de 30 dias (limpeza leve)
+      const THIRTY = 30*24*60*60*1000;
+      const now = Date.now();
+      const cleaned = filtered.filter(h=> h.deletedAt && (now - new Date(h.deletedAt).getTime()) <= THIRTY*2).slice(0, 100);
+      localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(cleaned));
+      window.dispatchEvent(new Event("boka:deleted_history"));
+    }
   } catch {}
 }
 export async function fetchProductsFromSql() {
@@ -353,30 +376,120 @@ export async function hydrateFromSql() {
   } catch {}
 }
 
+// helpers histórico local
+export function getDeletedHistoryLocal() {
+  const raw = localStorage.getItem(KEYS.DELETED_HISTORY);
+  const parsed = safeParse(raw, []) || [];
+  const THIRTY = 30*24*60*60*1000;
+  const now = Date.now();
+  // retorna apenas últimos 30 dias
+  return parsed.filter(p=> p.deletedAt && (now - new Date(p.deletedAt).getTime()) <= THIRTY);
+}
+export function clearDeletedHistoryLocal() {
+  try { localStorage.removeItem(KEYS.DELETED_HISTORY); } catch {}
+}
+
 // LIXEIRA — ver apagados e recuperar (SQL)
 export async function getTrash() {
   const apiData = await apiGet("/trash");
-  if (apiData) return apiData;
-  try { return await sqlBrowser.sqlGetTrash(); } catch { return { products: [], productsLast30: [], admins: [], discounts: [], accounts: [] }; }
+  if (apiData) {
+    // mescla com histórico local se API não tiver produtos (caso Vercel estático sem /api)
+    try {
+      const local = getDeletedHistoryLocal();
+      if (local.length && (!apiData.products || apiData.products.length===0)) {
+        apiData.products = local;
+        apiData.productsLast30 = local;
+      } else if (local.length && apiData.products) {
+        // mescla evitando duplicatas (prioriza API)
+        const ids = new Set(apiData.products.map(p=>p.id));
+        const missing = local.filter(p=>!ids.has(p.id));
+        if (missing.length) {
+          apiData.products = [...apiData.products, ...missing];
+          apiData.productsLast30 = [...(apiData.productsLast30||[]), ...missing.filter(p=> (Date.now()-new Date(p.deletedAt).getTime())<=30*24*60*60*1000)];
+        }
+      }
+    } catch {}
+    return apiData;
+  }
+  try {
+    const sql = await sqlBrowser.sqlGetTrash();
+    // mescla histórico local como fallback
+    try {
+      const local = getDeletedHistoryLocal();
+      if (local.length) {
+        const ids = new Set((sql.products||[]).map(p=>p.id));
+        const missing = local.filter(p=>!ids.has(p.id));
+        if (missing.length) {
+          sql.products = [...(sql.products||[]), ...missing];
+          sql.productsLast30 = [...(sql.productsLast30||[]), ...missing];
+        }
+      }
+    } catch {}
+    return sql;
+  } catch { 
+    // último fallback: só histórico local
+    const local = getDeletedHistoryLocal();
+    return { products: local, productsLast30: local, admins: [], discounts: [], accounts: [] }; 
+  }
 }
 export async function restoreTrash(type, id) {
   const apiRes = await apiSend(`/trash/restore/${type}/${id}`, "POST");
   if (apiRes !== null) {
     await hydrateFromSql();
+    // remove do histórico local
+    try {
+      const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+      localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+    } catch {}
     return apiRes;
   }
-  await sqlBrowser.sqlRestore(type, id);
-  await hydrateFromSql();
+  await sqlBrowser.sqlRestore(type, id).catch(()=>{});
+  // restaura no localStorage de produtos
+  try {
+    const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+    const found = h.find(x=>x.id===id);
+    if (found && type==="products") {
+      const prods = getProducts();
+      if (!prods.find(p=>p.id===id)) {
+        const restored = { ...found }; delete restored.deleted; delete restored.deletedAt;
+        localStorage.setItem(KEYS.PRODUCTS, JSON.stringify([...prods, restored]));
+        window.dispatchEvent(new Event("boka:products"));
+      }
+    }
+    localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+    window.dispatchEvent(new Event("boka:deleted_history"));
+  } catch {}
+  await hydrateFromSql().catch(()=>{});
 }
 export async function hardDeleteTrash(type, id) {
   const apiRes = await apiSend(`/trash/${type}/${id}`, "DELETE");
-  if (apiRes !== null) return apiRes;
+  if (apiRes !== null) {
+    // também limpa histórico local
+    try {
+      if (type==="products") {
+        const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+        localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+      }
+    } catch {}
+    return apiRes;
+  }
   await sqlBrowser.sqlHardDelete(type, id);
+  try {
+    if (type==="products") {
+      const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+      localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+      window.dispatchEvent(new Event("boka:deleted_history"));
+    }
+  } catch {}
 }
 export async function clearTrash() {
   const apiRes = await apiSend("/trash/clear", "DELETE");
-  if (apiRes !== null) return apiRes;
+  if (apiRes !== null) {
+    try { localStorage.removeItem(KEYS.DELETED_HISTORY); } catch {}
+    return apiRes;
+  }
   await sqlBrowser.sqlClearTrash();
+  try { localStorage.removeItem(KEYS.DELETED_HISTORY); } catch {}
 }
 
 // HISTÓRICO DE PRODUTOS EXCLUÍDOS (últimos 30 dias)
@@ -391,11 +504,29 @@ export async function getDeletedProductsHistory() {
 export async function restoreProduct(id) {
   const apiRes = await apiSend(`/products/${id}/restore`, "POST");
   if (apiRes !== null) {
+    try {
+      const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+      localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+    } catch {}
     await hydrateFromSql();
     return apiRes;
   }
-  await sqlBrowser.sqlRestoreProduct(id);
-  await hydrateFromSql();
+  await sqlBrowser.sqlRestoreProduct(id).catch(()=>{});
+  try {
+    const h = safeParse(localStorage.getItem(KEYS.DELETED_HISTORY), []) || [];
+    const found = h.find(x=>x.id===id);
+    if (found) {
+      const prods = getProducts();
+      if (!prods.find(p=>p.id===id)) {
+        const restored = { ...found }; delete restored.deleted; delete restored.deletedAt;
+        localStorage.setItem(KEYS.PRODUCTS, JSON.stringify([...prods, restored]));
+        window.dispatchEvent(new Event("boka:products"));
+      }
+    }
+    localStorage.setItem(KEYS.DELETED_HISTORY, JSON.stringify(h.filter(x=>x.id!==id)));
+    window.dispatchEvent(new Event("boka:deleted_history"));
+  } catch {}
+  await hydrateFromSql().catch(()=>{});
 }
 export async function purgeExpiredProducts() {
   const apiRes = await apiSend("/products/purge-expired", "POST");
