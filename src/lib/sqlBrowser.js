@@ -30,6 +30,15 @@ async function getDb() {
     try {
       const buf = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
       db = new SQL.Database(buf);
+      // migração whatsapp antigo já salvo no sql.js localStorage
+      try {
+        const cur = db.exec("SELECT whatsappNumber FROM settings WHERE id=1");
+        const curNum = cur[0]?.values[0]?.[0];
+        if (curNum && String(curNum).replace(/\D/g,"") === "554836223376") {
+          db.run("UPDATE settings SET whatsappNumber=? WHERE id=1", ["5548988452532"]);
+          saveDb();
+        }
+      } catch {}
       return db;
     } catch {}
   }
@@ -230,8 +239,14 @@ export async function sqlGetSettings() {
   const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle FROM settings WHERE id=1");
   if (!res[0] || !res[0].values[0]) return null;
   const v = res[0].values[0];
+  let whatsappNumber = v[4];
+  // migração: 554836223376 é fixo e NÃO está no WhatsApp -> corrige para móvel real
+  if (whatsappNumber && String(whatsappNumber).replace(/\D/g,"") === "554836223376") {
+    whatsappNumber = "5548988452532";
+    try { db.run("UPDATE settings SET whatsappNumber=? WHERE id=1", [whatsappNumber]); saveDb(); } catch {}
+  }
   return {
-    address: v[0], gmapsLink: v[1], phoneDisplay: v[2], phoneTel: v[3], whatsappNumber: v[4],
+    address: v[0], gmapsLink: v[1], phoneDisplay: v[2], phoneTel: v[3], whatsappNumber,
     instagramUrl: v[5], ifoodUrl: v[6], logo: v[7], openHour: v[8], closeHour: v[9], heroTitle: v[10], heroSubtitle: v[11]
   };
 }
