@@ -40,8 +40,11 @@ function Instagram({ className, ...props }) {
 // ============================================================================
 // CONFIG — DADOS REAIS
 // ============================================================================
-const WHATSAPP_NUMBER = "554836223376";
-const WHATSAPP_DISPLAY = "(48) 3622-3376";
+// FIX: 3622-3376 é fixo e NÃO está no WhatsApp (erro "não está no WhatsApp").
+// WhatsApp real é o móvel (48) 98845-2532 (ver Facebook oficial). Fixo mantido só para "Ligar".
+const WHATSAPP_NUMBER = "5548988452532";
+const WHATSAPP_DISPLAY = "(48) 98845-2532";
+const PHONE_DISPLAY = "(48) 3622-3376";
 const PHONE_TEL = "+554836223376";
 const INSTAGRAM_URL = "https://instagram.com/bokalokalanchestb";
 const IFOOD_URL = "https://www.ifood.com.br/delivery/tubarao-sc/boka-loka-lanches-santo-antonio-de-padua/d17f480a-0eae-4876-8071-c635950e85ef";
@@ -341,7 +344,7 @@ export default function App() {
   }, [dynSettings]);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: PHONE_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
   const SETTINGS = {
     ...SETTINGS_RAW,
     whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,

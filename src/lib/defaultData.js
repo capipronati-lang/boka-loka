@@ -4,7 +4,7 @@ export const DEFAULT_SETTINGS = {
   gmapsLink: "https://www.google.com/maps/search/?api=1&query=Av.%20Pedro%20Zapelini%2C%201450%20%E2%80%93%20Centro%2C%20Tubar%C3%A3o%20%E2%80%93%20SC%2C%2088701-730",
   phoneDisplay: "(48) 3622-3376",
   phoneTel: "+554836223376",
-  whatsappNumber: "554836223376",
+  whatsappNumber: "5548988452532",
   instagramUrl: "https://instagram.com/bokalokalanchestb",
   ifoodUrl: "https://www.ifood.com.br/delivery/tubarao-sc/boka-loka-lanches-santo-antonio-de-padua/d17f480a-0eae-4876-8071-c635950e85ef",
   logo: "/logo-nova.avif",

@@ -137,6 +137,11 @@ export function getSettings() {
     merged.logo = "/logo-nova.avif";
     try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged)); } catch {}
   }
+  // migração: 554836223376 é fixo e NÃO está no WhatsApp (erro "não está no WhatsApp") -> troca para móvel real
+  if (merged.whatsappNumber && merged.whatsappNumber.replace(/\D/g,"") === "554836223376") {
+    merged.whatsappNumber = "5548988452532";
+    try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged)); } catch {}
+  }
   return merged;
 }
 export function saveSettings(settings) {
