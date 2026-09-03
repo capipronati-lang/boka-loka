@@ -27,3 +27,4 @@ server/boka.db-*
 *.sw?
 
 .vercel
+.env*

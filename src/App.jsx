@@ -475,12 +475,8 @@ export default function App() {
       setTimeout(() => setToast(null), 2000);
       return;
     }
-    const rawNumber = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER || "").replace(/\D/g, "");
-    if (!rawNumber || rawNumber.length < 10) {
-      setToast("WhatsApp não configurado. Verifique em Admin > Loja");
-      setTimeout(() => setToast(null), 2500);
-      return;
-    }
+    // sempre abre mesmo sem contato salvo — usa fallback do número padrão
+    const rawNumber = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER || "").replace(/\D/g, "") || WHATSAPP_NUMBER.replace(/\D/g,"");
     const lines = cart.map((item) => {
       const prod = EFFECTIVE_PRODUCTS.find((p) => p.id === item.id);
       if (!prod) return "";
@@ -502,14 +498,17 @@ export default function App() {
   };
 
   const handleCall = () => {
-    window.location.href = `tel:${SETTINGS.phoneTel}`;
+    const tel = SETTINGS.phoneTel || PHONE_TEL;
+    window.location.href = `tel:${tel}`;
   };
 
   const handleSaveContact = () => {
+    const wa = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER).replace(/\D/g,"") || WHATSAPP_NUMBER.replace(/\D/g,"");
+    const tel = SETTINGS.phoneTel || PHONE_TEL;
     const vcard = [
       "BEGIN:VCARD", "VERSION:3.0", "FN:Boka Loka Lanches", "ORG:Boka Loka Lanches",
-      `TEL;TYPE=CELL,VOICE:${SETTINGS.whatsappNumber}`, `TEL;TYPE=WORK,VOICE:${SETTINGS.phoneTel}`,
-      `ADR;TYPE=WORK:;;${SETTINGS.address};;;;`, `URL:${SETTINGS.instagramUrl}`,
+      `TEL;TYPE=CELL,VOICE:${wa}`, `TEL;TYPE=WORK,VOICE:${tel}`,
+      `ADR;TYPE=WORK:;;${SETTINGS.address || ADDRESS};;;;`, `URL:${SETTINGS.instagramUrl || INSTAGRAM_URL}`,
       `NOTE:Hamburgueria em Tubarao/SC — Todos os dias ${String(SETTINGS.openHour).padStart(2,"0")}h as ${SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h`,
       "END:VCARD",
     ].join("\r\n");
