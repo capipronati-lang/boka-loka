@@ -132,9 +132,9 @@ export function getSettings() {
   }
   const parsed = safeParse(raw, DEFAULT_SETTINGS);
   const merged = { ...DEFAULT_SETTINGS, ...parsed };
-  // migração automática para nova logo 202109040734_VqXG_i.avif (troca svg antigo)
-  if (merged.logo === "/boka-loka-logo.svg" || merged.logo === "boka-loka-logo.svg") {
-    merged.logo = "/logo-nova.avif";
+  // migração automática para nova logo 202109040734_VqXG_i (troca svg antigo)
+  if (merged.logo === "/boka-loka-logo.svg" || merged.logo === "boka-loka-logo.svg" || merged.logo === "/logo-nova.avif") {
+    merged.logo = "/logo-nova.png";
     try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged)); } catch {}
   }
   return merged;

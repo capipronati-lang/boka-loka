@@ -341,14 +341,14 @@ export default function App() {
   }, [dynSettings]);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.png", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
   const SETTINGS = {
     ...SETTINGS_RAW,
     whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,
     phoneTel: SETTINGS_RAW.phoneTel || PHONE_TEL,
     address: SETTINGS_RAW.address || ADDRESS,
     gmapsLink: SETTINGS_RAW.gmapsLink || GMAPS_LINK,
-    logo: SETTINGS_RAW.logo || "/logo-nova.avif",
+    logo: SETTINGS_RAW.logo || "/logo-nova.png",
     openHour: SETTINGS_RAW.openHour ?? OPEN_HOUR,
     closeHour: SETTINGS_RAW.closeHour ?? CLOSE_HOUR,
   };
