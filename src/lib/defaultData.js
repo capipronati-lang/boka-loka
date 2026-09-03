@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS = {
   whatsappNumber: "554836223376",
   instagramUrl: "https://instagram.com/bokalokalanchestb",
   ifoodUrl: "https://www.ifood.com.br/delivery/tubarao-sc/boka-loka-lanches-santo-antonio-de-padua/d17f480a-0eae-4876-8071-c635950e85ef",
-  logo: "/boka-loka-logo.svg",
+  logo: "/logo-nova.avif",
   heroTitle: "BOKA LOKA",
   heroSubtitle: "Simples, bom e ponto. O lanche tradicional de Tubarão.",
   openHour: 18,

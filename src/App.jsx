@@ -323,15 +323,34 @@ export default function App() {
       try { setDynDiscounts(getDiscounts()); } catch {}
     }).catch(()=>{});
   }, []);
+  // polling fallback para horario/logo refletir mesmo entre abas (storage event nem sempre dispara)
+  useEffect(() => {
+    const id = setInterval(() => {
+      try {
+        const s = getSettings();
+        // só atualiza se mudou
+        const cur = JSON.stringify(s);
+        const prev = JSON.stringify(dynSettings);
+        if (cur !== prev) setDynSettings(s);
+      } catch {}
+    }, 1000);
+    const onVis = () => { try { setDynSettings(getSettings()); } catch {} };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); };
+  }, [dynSettings]);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/boka-loka-logo.svg", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: WHATSAPP_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
   const SETTINGS = {
     ...SETTINGS_RAW,
     whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,
     phoneTel: SETTINGS_RAW.phoneTel || PHONE_TEL,
     address: SETTINGS_RAW.address || ADDRESS,
     gmapsLink: SETTINGS_RAW.gmapsLink || GMAPS_LINK,
+    logo: SETTINGS_RAW.logo || "/logo-nova.avif",
+    openHour: SETTINGS_RAW.openHour ?? OPEN_HOUR,
+    closeHour: SETTINGS_RAW.closeHour ?? CLOSE_HOUR,
   };
   const GMAPS_LINK_DYN = SETTINGS.gmapsLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(SETTINGS.address)}`;
   const GMAPS_EMBED_DYN = `https://maps.google.com/maps?q=${encodeURIComponent(SETTINGS.address)}&t=&z=17&ie=UTF8&iwloc=&output=embed`;
@@ -429,6 +448,27 @@ export default function App() {
   };
   const formatBRL = (n) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+  // gera link do whatsapp com carrinho se existir, senão mensagem padrão - usado em todos os botões "Chamar no WhatsApp"
+  const getWhatsAppHref = () => {
+    const rawNumber = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER || "").replace(/\D/g, "") || WHATSAPP_NUMBER.replace(/\D/g,"");
+    if (cart.length > 0) {
+      const lines = cart.map((item) => {
+        const prod = EFFECTIVE_PRODUCTS.find((p) => p.id === item.id);
+        if (!prod) return "";
+        const base = `• ${item.qty}x ${prod.name} — ${formatBRL((getDisplayPrice(prod) + (item.extrasPrice || 0)) * item.qty)}`;
+        const extras = item.extras?.length ? `\n  + ${item.extras.map((id) => EXTRAS_CATALOG.find((e) => e.id === id)?.name).join(", ")}` : "";
+        const removed = item.removed?.length ? `\n  - sem: ${item.removed.join(", ")}` : "";
+        const obs = item.observation ? `\n  obs: ${item.observation}` : "";
+        return base + extras + removed + obs;
+      }).join("\n");
+      const total = formatBRL(cartTotal);
+      const payLabel = paymentMethod === "pix" ? "Pix" : paymentMethod === "card" ? "Cartão" : paymentMethod === "money" ? "Dinheiro" : "Pix";
+      const msgRaw = `Olá! Quero fazer um pedido na *Boka Loka Lanches*:\n\n${lines}\n\n*Total: ${total}*\n*Pagamento: ${payLabel}*\n\nPode confirmar meu pedido? 🍔`;
+      return `https://wa.me/${rawNumber}?text=${encodeURIComponent(msgRaw)}`;
+    }
+    return `https://wa.me/${rawNumber}?text=${encodeURIComponent("Olá! Gostaria de fazer um pedido na Boka Loka Lanches 🍔")}`;
+  };
+
   const handleWhatsAppCheckout = () => {
     if (cart.length === 0) {
       setToast("Seu carrinho está vazio!");
@@ -470,7 +510,7 @@ export default function App() {
       "BEGIN:VCARD", "VERSION:3.0", "FN:Boka Loka Lanches", "ORG:Boka Loka Lanches",
       `TEL;TYPE=CELL,VOICE:${SETTINGS.whatsappNumber}`, `TEL;TYPE=WORK,VOICE:${SETTINGS.phoneTel}`,
       `ADR;TYPE=WORK:;;${SETTINGS.address};;;;`, `URL:${SETTINGS.instagramUrl}`,
-      "NOTE:Hamburgueria em Tubarão/SC — Todos os dias 18h às 00h",
+      `NOTE:Hamburgueria em Tubarão/SC — ${nextOpen}`,
       "END:VCARD",
     ].join("\r\n");
     const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
@@ -531,7 +571,7 @@ export default function App() {
               <ShoppingBag className="h-[18px] w-[18px]" />
               <AnimatePresence>{cartCount > 0 && <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#e30613] px-1 text-[11px] font-black leading-none text-white shadow-lg">{cartCount}</motion.span>}</AnimatePresence>
             </button>
-            <a href={`https://wa.me/${SETTINGS.whatsappNumber}?text=${encodeURIComponent("Olá! Gostaria de fazer um pedido na Boka Loka Lanches 🍔")}`} target="_blank" rel="noopener noreferrer" className="hidden h-11 items-center gap-2 rounded-full bg-[#25d366] px-6 text-[13.5px] font-extrabold text-white shadow-[0_8px_24px_rgba(37,211,102,0.28)] transition hover:brightness-110 active:scale-[0.98] sm:inline-flex">
+            <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="hidden h-11 items-center gap-2 rounded-full bg-[#25d366] px-6 text-[13.5px] font-extrabold text-white shadow-[0_8px_24px_rgba(37,211,102,0.28)] transition hover:brightness-110 active:scale-[0.98] sm:inline-flex">
               <MessageCircle className="h-4 w-4 fill-white" />
               Pedir agora
             </a>
@@ -554,7 +594,7 @@ export default function App() {
                 ))}
                 <div className="grid grid-cols-2 gap-3 pt-3">
                   <a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="grid place-items-center rounded-full bg-zinc-900 py-3 text-sm font-black text-white">Pedir no iFood</a>
-                  <a href={`https://wa.me/${SETTINGS.whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="grid place-items-center rounded-full bg-[#e30613] py-3 text-sm font-black text-white">WhatsApp</a>
+                  <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="grid place-items-center rounded-full bg-[#e30613] py-3 text-sm font-black text-white">WhatsApp</a>
                 </div>
                 <div className="flex items-center justify-center gap-2 pt-3 text-xs text-zinc-500">
                   <span className={`h-2 w-2 rounded-full ${isOpen ? "bg-emerald-500" : "bg-zinc-400"}`} />
@@ -597,7 +637,7 @@ export default function App() {
                   <ShoppingBag className="h-4 w-4" />
                   FAZER PEDIDO
                 </button>
-                <a href={`https://wa.me/${SETTINGS.whatsappNumber}?text=${encodeURIComponent("Olá Boka Loka! Quero fazer um pedido 🍔")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[13px] font-black tracking-wide text-zinc-800 ring-1 ring-zinc-300 transition hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]">
+                <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[13px] font-black tracking-wide text-zinc-800 ring-1 ring-zinc-300 transition hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]">
                   <MessageCircle className="h-4 w-4" />
                   VER NO WHATSAPP
                 </a>
@@ -670,8 +710,8 @@ export default function App() {
             </motion.div>
             <div className="hidden lg:block" />
           </div>
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mt-10 grid grid-cols-2 gap-3 rounded-[20px] border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-4">
-            {[{ k: "1.6k+", v: "avaliações" }, { k: "4.6★", v: "nota média" }, { k: "18h–00h", v: "todos os dias" }, { k: "Centro", v: "Tubarão/SC" }].map((s) => (
+            <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mt-10 grid grid-cols-2 gap-3 rounded-[20px] border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-4">
+            {[{ k: "1.6k+", v: "avaliações" }, { k: "4.6★", v: "nota média" }, { k: `${String(SETTINGS.openHour).padStart(2,"0")}h–${SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h`, v: "todos os dias" }, { k: "Centro", v: "Tubarão/SC" }].map((s) => (
               <div key={s.k} className="rounded-2xl bg-white px-4 py-4 text-center ring-1 ring-zinc-200"><div className="font-display text-[22px] font-black leading-none tracking-[-0.02em] text-zinc-900">{s.k}</div><div className="mt-1 text-[11px] font-bold tracking-[0.12em] text-zinc-500">{s.v.toUpperCase()}</div></div>
             ))}
           </motion.div>
@@ -777,10 +817,10 @@ export default function App() {
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-black tracking-wide ${isOpen ? "bg-emerald-500 text-white" : "bg-zinc-200 text-zinc-600"}`}>{isOpen ? "● ABERTO" : "○ FECHADO"}</span>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500"><Clock className="h-3.5 w-3.5" />Todos os dias, 18h às 00h — verificado</div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500"><Clock className="h-3.5 w-3.5" />{nextOpen} — verificado</div>
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <a href={GMAPS_LINK_DYN} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#e30613] px-6 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(227,6,19,0.25)] hover:bg-[#b8050f] active:scale-[0.98]"><Navigation className="h-4 w-4" />Como chegar</a>
-                  <a href={`https://wa.me/${SETTINGS.whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Chamar no WhatsApp</a>
+                  <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Chamar no WhatsApp</a>
                 </div>
               </div>
             </motion.div>
@@ -836,7 +876,7 @@ export default function App() {
             <div>
               <div className="text-xs font-black tracking-[0.14em] text-white">ATENDIMENTO</div>
               <ul className="mt-4 space-y-2.5 text-sm font-medium text-zinc-400">
-                <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-zinc-500" />Todos os dias • 18h às 00h</li>
+                <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-zinc-500" />{nextOpen}</li>
                 <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-zinc-500" />{SETTINGS.address}</li>
                 <li><a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-white hover:text-[#ffc300]">Pedir pelo iFood<ArrowUpRight className="h-3.5 w-3.5" /></a></li>
                 <li><a href={GMAPS_LINK_DYN} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-zinc-300 hover:text-white">Como chegar no Google Maps<Navigation className="h-3.5 w-3.5" /></a></li>
@@ -856,7 +896,7 @@ export default function App() {
                   <button onClick={() => { setToast("Em breve! Por enquanto, chame no WhatsApp 😊"); setTimeout(() => setToast(null), 2400); }} className="shrink-0 rounded-full bg-[#e30613] px-5 py-2.5 text-sm font-black text-white hover:bg-[#b8050f] active:scale-95">Enviar</button>
                 </div>
                 <div className="flex items-center gap-3 pt-2">
-                  <a href={`https://wa.me/${SETTINGS.whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="group grid h-9 w-9 place-items-center rounded-full bg-[#25d366] text-white transition hover:scale-110 hover:rotate-3" aria-label="WhatsApp"><MessageCircle className="h-4 w-4 fill-white" /></a>
+                  <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="group grid h-9 w-9 place-items-center rounded-full bg-[#25d366] text-white transition hover:scale-110 hover:rotate-3" aria-label="WhatsApp"><MessageCircle className="h-4 w-4 fill-white" /></a>
                   <a href={SETTINGS.instagramUrl} target="_blank" rel="noopener noreferrer" className="group grid h-9 w-9 place-items-center rounded-full bg-white text-zinc-900 transition hover:scale-110 hover:rotate-3" aria-label="Instagram"><Instagram className="h-4 w-4" /></a>
                   <a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="grid h-9 w-9 place-items-center rounded-full bg-[#ea1d2c] text-[11px] font-black text-white transition hover:scale-110" aria-label="iFood">iF</a>
                   <span className="ml-1 text-xs font-semibold text-zinc-500">Siga • Peça • Avalie</span>
@@ -1069,7 +1109,7 @@ export default function App() {
             <Phone className="h-4 w-4" />
             Ligar
           </a>
-          <a href={`https://wa.me/${SETTINGS.whatsappNumber}?text=${encodeURIComponent("Olá Boka Loka! Quero fazer um pedido 🍔")}`} target="_blank" rel="noopener noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#25d366] py-3 text-[13px] font-black text-white active:scale-[0.97]">
+          <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#25d366] py-3 text-[13px] font-black text-white active:scale-[0.97]">
             <MessageCircle className="h-4 w-4 fill-white" />
             WhatsApp
           </a>
@@ -1082,7 +1122,7 @@ export default function App() {
       </div>
 
       {/* FLOATING WHATSAPP — desktop only (mobile usa barra) */}
-      <motion.a href={`https://wa.me/${SETTINGS.whatsappNumber}?text=${encodeURIComponent("Olá Boka Loka! Quero fazer um pedido 🍔")}`} target="_blank" rel="noopener noreferrer" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: "spring", stiffness: 300, damping: 18 }} className="fixed bottom-5 right-5 z-30 hidden h-[58px] w-[58px] place-items-center rounded-full bg-[#25d366] text-white shadow-[0_12px_36px_rgba(37,211,102,0.45)] hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-[60px] sm:w-[60px] lg:grid" aria-label="Chamar no WhatsApp">
+      <motion.a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: "spring", stiffness: 300, damping: 18 }} className="fixed bottom-5 right-5 z-30 hidden h-[58px] w-[58px] place-items-center rounded-full bg-[#25d366] text-white shadow-[0_12px_36px_rgba(37,211,102,0.45)] hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-[60px] sm:w-[60px] lg:grid" aria-label="Chamar no WhatsApp">
         <span className="absolute inset-0 animate-ping rounded-full bg-[#25d366]/40" />
         <span className="absolute inset-0 animate-ping rounded-full bg-[#25d366]/20 [animation-delay:0.7s]" />
         <MessageCircle className="relative h-7 w-7 fill-white" />

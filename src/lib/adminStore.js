@@ -131,7 +131,13 @@ export function getSettings() {
     return DEFAULT_SETTINGS;
   }
   const parsed = safeParse(raw, DEFAULT_SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...parsed };
+  const merged = { ...DEFAULT_SETTINGS, ...parsed };
+  // migração automática para nova logo 202109040734_VqXG_i.avif (troca svg antigo)
+  if (merged.logo === "/boka-loka-logo.svg" || merged.logo === "boka-loka-logo.svg") {
+    merged.logo = "/logo-nova.avif";
+    try { localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged)); } catch {}
+  }
+  return merged;
 }
 export function saveSettings(settings) {
   const merged = { ...getSettings(), ...settings };
