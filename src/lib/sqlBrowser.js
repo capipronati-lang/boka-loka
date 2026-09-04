@@ -68,7 +68,11 @@ async function getDb() {
       openHour INTEGER,
       closeHour INTEGER,
       heroTitle TEXT,
-      heroSubtitle TEXT
+      heroSubtitle TEXT,
+      pixKey TEXT,
+      pixKeyType TEXT,
+      pixHolder TEXT,
+      pixCity TEXT
     );
     CREATE TABLE IF NOT EXISTS admins (
       id TEXT PRIMARY KEY,
@@ -118,6 +122,11 @@ async function getDb() {
     try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN deleted INTEGER DEFAULT 0`); } catch {}
     try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN deletedAt TEXT`); } catch {}
   }
+  // migração pix key
+  try { db.exec(`ALTER TABLE settings ADD COLUMN pixKey TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN pixKeyType TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN pixHolder TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN pixCity TEXT`); } catch {}
   // seed se vazio
   const prodCount = db.exec("SELECT COUNT(*) as c FROM products")[0]?.values[0]?.[0] || 0;
   if (prodCount === 0) {
@@ -130,8 +139,17 @@ async function getDb() {
   const setCount = db.exec("SELECT COUNT(*) as c FROM settings WHERE id=1")[0]?.values[0]?.[0] || 0;
   if (setCount === 0) {
     const s = DEFAULT_SETTINGS;
-    db.run("INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [s.address, s.gmapsLink, s.phoneDisplay, s.phoneTel, s.whatsappNumber, s.instagramUrl, s.ifoodUrl, s.logo, s.openHour, s.closeHour, s.heroTitle, s.heroSubtitle]);
+    db.run("INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [s.address, s.gmapsLink, s.phoneDisplay, s.phoneTel, s.whatsappNumber, s.instagramUrl, s.ifoodUrl, s.logo, s.openHour, s.closeHour, s.heroTitle, s.heroSubtitle, s.pixKey||"5548988452532", s.pixKeyType||"phone", s.pixHolder||"Boka Loka Lanches", s.pixCity||"Tubarao"]);
+  } else {
+    // garante pixKey preenchido se vazio
+    try {
+      const cur = db.exec("SELECT pixKey FROM settings WHERE id=1")[0]?.values[0]?.[0];
+      if (!cur) {
+        db.run("UPDATE settings SET pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1",
+          [DEFAULT_SETTINGS.pixKey||"5548988452532", DEFAULT_SETTINGS.pixKeyType||"phone", DEFAULT_SETTINGS.pixHolder||"Boka Loka Lanches", DEFAULT_SETTINGS.pixCity||"Tubarao"]);
+      }
+    } catch {}
   }
   const adminCount = db.exec("SELECT COUNT(*) as c FROM admins")[0]?.values[0]?.[0] || 0;
   if (adminCount === 0) {
@@ -254,26 +272,29 @@ export async function sqlSoftDeleteProduct(id) {
 
 export async function sqlGetSettings() {
   const db = await getDb();
-  const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle FROM settings WHERE id=1");
+  const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity FROM settings WHERE id=1");
   if (!res[0] || !res[0].values[0]) return null;
   const v = res[0].values[0];
   let whatsappNumber = v[4];
-  // migração: 554836223376 é fixo e NÃO está no WhatsApp -> corrige para móvel real
   if (whatsappNumber && String(whatsappNumber).replace(/\D/g,"") === "554836223376") {
     whatsappNumber = "5548988452532";
     try { db.run("UPDATE settings SET whatsappNumber=? WHERE id=1", [whatsappNumber]); saveDb(); } catch {}
   }
   return {
     address: v[0], gmapsLink: v[1], phoneDisplay: v[2], phoneTel: v[3], whatsappNumber,
-    instagramUrl: v[5], ifoodUrl: v[6], logo: v[7], openHour: v[8], closeHour: v[9], heroTitle: v[10], heroSubtitle: v[11]
+    instagramUrl: v[5], ifoodUrl: v[6], logo: v[7], openHour: v[8], closeHour: v[9], heroTitle: v[10], heroSubtitle: v[11],
+    pixKey: v[12] || DEFAULT_SETTINGS.pixKey || "5548988452532",
+    pixKeyType: v[13] || "phone",
+    pixHolder: v[14] || "Boka Loka Lanches",
+    pixCity: v[15] || "Tubarao",
   };
 }
 export async function sqlSaveSettings(settings) {
   const db = await getDb();
   const cur = await sqlGetSettings();
   const next = { ...cur, ...settings };
-  db.run("UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=? WHERE id=1",
-    [next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle]);
+  db.run("UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1",
+    [next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity]);
   saveDb();
   return next;
 }
@@ -405,11 +426,17 @@ export async function sqlGetOrder(id) {
   row.total = Number(row.total);
   return row;
 }
-function generateMockPixBrowser({ id, total }) {
+function buildPixPayloadBrowser({ pixKey, pixHolder, pixCity, amount, txId }) {
+  const key = String(pixKey).replace(/\D/g,"").slice(0,32) || "5548988452532";
+  const holder = String(pixHolder).slice(0,25) || "Boka Loka";
+  const city = String(pixCity).slice(0,15) || "Tubarao";
+  const amountStr = Number(amount).toFixed(2);
+  return `00020126360014BR.GOV.BCB.PIX0114+55${key}520400005303986540${amountStr.padStart(6,"0")}5802BR5913${holder}6009${city}62070503${txId.slice(0,3)}6304ABCD`;
+}
+function generateMockPixBrowser({ id, total, pixKey, pixHolder, pixCity }) {
   const amount = Number(total).toFixed(2);
   const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
-  const pixKey = "48988452532";
-  const pixCode = `00020126360014BR.GOV.BCB.PIX0114+55${pixKey}520400005303986540${amount.padStart(5,"0")}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
+  const pixCode = buildPixPayloadBrowser({ pixKey: pixKey||"5548988452532", pixHolder, pixCity, amount, txId });
   const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
   return { pixCode, pixQr, pixTxId: txId };
 }
@@ -421,7 +448,9 @@ export async function sqlCreateOrder({ customerName, customerPhone, customerAddr
   let status = pm === "pix" ? "pending_pix" : "pending";
   let pixCode = null, pixQr = null, pixTxId = null;
   if (pm === "pix") {
-    const mock = generateMockPixBrowser({ id, total });
+    let pixConf = { pixKey:"5548988452532", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
+    try { const s = await sqlGetSettings(); if (s?.pixKey) pixConf = s; } catch {}
+    const mock = generateMockPixBrowser({ id, total, pixKey: pixConf.pixKey, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
     pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
   }
   db.run("INSERT INTO orders (id, customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod, status, pixCode, pixQr, pixTxId, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",

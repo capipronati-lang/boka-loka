@@ -358,7 +358,7 @@ export default function App() {
   }, [dynSettings]);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: PHONE_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: PHONE_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR, pixKey: "5548988452532", pixKeyType: "phone", pixHolder: "Boka Loka Lanches", pixCity: "Tubarao" };
   const SETTINGS = {
     ...SETTINGS_RAW,
     whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,
@@ -368,6 +368,10 @@ export default function App() {
     logo: SETTINGS_RAW.logo || "/logo-nova.avif",
     openHour: SETTINGS_RAW.openHour ?? OPEN_HOUR,
     closeHour: SETTINGS_RAW.closeHour ?? CLOSE_HOUR,
+    pixKey: SETTINGS_RAW.pixKey || "5548988452532",
+    pixKeyType: SETTINGS_RAW.pixKeyType || "phone",
+    pixHolder: SETTINGS_RAW.pixHolder || "Boka Loka Lanches",
+    pixCity: SETTINGS_RAW.pixCity || "Tubarao",
   };
   const GMAPS_LINK_DYN = SETTINGS.gmapsLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(SETTINGS.address)}`;
   const GMAPS_EMBED_DYN = `https://maps.google.com/maps?q=${encodeURIComponent(SETTINGS.address)}&t=&z=17&ie=UTF8&iwloc=&output=embed`;

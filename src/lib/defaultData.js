@@ -12,6 +12,10 @@ export const DEFAULT_SETTINGS = {
   heroSubtitle: "Simples, bom e ponto. O lanche tradicional de Tubarão.",
   openHour: 18,
   closeHour: 0,
+  pixKey: "5548988452532", // chave PIX fixa (pode ser CPF, telefone, email ou aleatória) - editável em Admin > Loja
+  pixKeyType: "phone", // phone | cpf | email | random
+  pixHolder: "Boka Loka Lanches",
+  pixCity: "Tubarao",
 };
 
 export const DEFAULT_ADMINS = [

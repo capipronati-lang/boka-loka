@@ -37,7 +37,11 @@ export async function getDb() {
         openHour INTEGER,
         closeHour INTEGER,
         heroTitle TEXT,
-        heroSubtitle TEXT
+        heroSubtitle TEXT,
+        pixKey TEXT,
+        pixKeyType TEXT,
+        pixHolder TEXT,
+        pixCity TEXT
       );
 
       CREATE TABLE IF NOT EXISTS admins (
@@ -91,6 +95,11 @@ export async function getDb() {
       try { await db.exec(`ALTER TABLE ${tbl} ADD COLUMN deleted INTEGER DEFAULT 0`); } catch {}
       try { await db.exec(`ALTER TABLE ${tbl} ADD COLUMN deletedAt TEXT`); } catch {}
     }
+    // migração PIX chave fixa editável
+    try { await db.exec(`ALTER TABLE settings ADD COLUMN pixKey TEXT`); } catch {}
+    try { await db.exec(`ALTER TABLE settings ADD COLUMN pixKeyType TEXT`); } catch {}
+    try { await db.exec(`ALTER TABLE settings ADD COLUMN pixHolder TEXT`); } catch {}
+    try { await db.exec(`ALTER TABLE settings ADD COLUMN pixCity TEXT`); } catch {}
     return db;
   });
   return dbPromise;

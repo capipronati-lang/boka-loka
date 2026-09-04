@@ -22,8 +22,8 @@ export async function seed() {
   if (sCount.c === 0) {
     console.log("Seeding settings...");
     await db.run(
-      `INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       DEFAULT_SETTINGS.address,
       DEFAULT_SETTINGS.gmapsLink,
       DEFAULT_SETTINGS.phoneDisplay,
@@ -35,8 +35,24 @@ export async function seed() {
       DEFAULT_SETTINGS.openHour,
       DEFAULT_SETTINGS.closeHour,
       DEFAULT_SETTINGS.heroTitle,
-      DEFAULT_SETTINGS.heroSubtitle
+      DEFAULT_SETTINGS.heroSubtitle,
+      DEFAULT_SETTINGS.pixKey || "5548988452532",
+      DEFAULT_SETTINGS.pixKeyType || "phone",
+      DEFAULT_SETTINGS.pixHolder || "Boka Loka Lanches",
+      DEFAULT_SETTINGS.pixCity || "Tubarao"
     );
+  } else {
+    // migração para quem já tem settings sem pixKey
+    try {
+      const row = await db.get("SELECT pixKey FROM settings WHERE id=1");
+      if (row && !row.pixKey) {
+        await db.run("UPDATE settings SET pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1",
+          DEFAULT_SETTINGS.pixKey || "5548988452532",
+          DEFAULT_SETTINGS.pixKeyType || "phone",
+          DEFAULT_SETTINGS.pixHolder || "Boka Loka Lanches",
+          DEFAULT_SETTINGS.pixCity || "Tubarao");
+      }
+    } catch {}
   }
 
   // admins

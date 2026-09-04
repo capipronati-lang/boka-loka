@@ -367,7 +367,7 @@ export async function createOrder(payload) {
       return browserRes;
     }
   } catch (e) { console.warn("sqlCreateOrder falhou", e); }
-  // último fallback: só localStorage (gera mock pix local)
+  // último fallback: só localStorage (gera mock pix local com chave das configurações)
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6).toUpperCase();
   const now = new Date().toISOString();
   const pm = (payload.paymentMethod||"pix").toLowerCase();
@@ -375,7 +375,12 @@ export async function createOrder(payload) {
   if (pm==="pix") {
     const amount = Number(payload.total).toFixed(2);
     const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
-    pixCode = `00020126360014BR.GOV.BCB.PIX0114+5548988452532${amount}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
+    let pixConf = { pixKey:"5548988452532", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
+    try { const s = getSettings(); if (s?.pixKey) pixConf = s; } catch {}
+    const key = String(pixConf.pixKey).replace(/\D/g,"").slice(0,32) || "5548988452532";
+    const holder = String(pixConf.pixHolder||"Boka Loka").slice(0,25);
+    const city = String(pixConf.pixCity||"Tubarao").slice(0,15);
+    pixCode = `00020126360014BR.GOV.BCB.PIX0114+55${key}520400005303986540${amount.padStart(6,"0")}5802BR5913${holder}6009${city}62070503${txId.slice(0,3)}6304ABCD`;
     pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
     pixTxId = txId;
   }

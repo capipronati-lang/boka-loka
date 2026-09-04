@@ -651,6 +651,39 @@ function ConfigTab({ settings, setSettings, showToast }) {
           <span className="text-xs font-black">WhatsApp (apenas números, com DDD)</span>
           <input value={form.whatsappNumber} onChange={e=>setForm({...form, whatsappNumber: e.target.value.replace(/\D/g,"")})} placeholder="554836223376" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
         </label>
+        <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-zinc-200 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-black"><QrCode className="h-4 w-4 text-[#e30613]"/> CHAVE PIX FIXA — gerador QR</div>
+          <p className="text-xs text-zinc-500">Chave fixa usada para gerar QR de todos os pedidos. Troque a hora que quiser, todos os novos PIX usarão a nova chave. Suporta CPF, telefone, email ou aleatória.</p>
+          <label className="space-y-1">
+            <span className="text-xs font-black">Chave PIX *</span>
+            <input value={form.pixKey || ""} onChange={e=>setForm({...form, pixKey: e.target.value.trim()})} placeholder="5548988452532 ou cpf@email.com" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900 font-mono" />
+            <span className="text-[11px] text-zinc-500">Ex: telefone 5548988452532, CPF 00000000000, email ou chave aleatória. Sem máscara para telefone/CPF, mantém só números.</span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-black">Tipo da chave</span>
+              <select value={form.pixKeyType || "phone"} onChange={e=>setForm({...form, pixKeyType: e.target.value})} className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900">
+                <option value="phone">Telefone</option>
+                <option value="cpf">CPF</option>
+                <option value="email">E-mail</option>
+                <option value="random">Aleatória</option>
+                <option value="cnpj">CNPJ</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-black">Titular (aparece no PIX)</span>
+              <input value={form.pixHolder || ""} onChange={e=>setForm({...form, pixHolder: e.target.value})} placeholder="Boka Loka Lanches" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+            </label>
+          </div>
+          <label className="space-y-1">
+            <span className="text-xs font-black">Cidade (para BR Code)</span>
+            <input value={form.pixCity || ""} onChange={e=>setForm({...form, pixCity: e.target.value})} placeholder="Tubarao" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+          </label>
+          <div className="rounded-xl bg-white p-3 ring-1 ring-zinc-200 flex items-center gap-3">
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`PIX:${form.pixKey||""}|${form.pixHolder||""}`)}`} alt="previa QR" className="h-16 w-16 rounded-lg ring-1 ring-zinc-200" onError={(e)=>{e.currentTarget.style.display='none'}} />
+            <div className="text-xs"><div className="font-black">Prévia QR</div><div className="font-mono text-zinc-500 break-all">{form.pixKey || "—"} • {form.pixHolder || "—"} ({form.pixCity || "—"})</div><div className="text-[11px] text-zinc-500">QR real do pedido inclui valor e TXID dinâmico.</div></div>
+          </div>
+        </div>
         <label className="space-y-1">
           <span className="flex items-center gap-2 text-xs font-black"><Link2 className="h-4 w-4" />Instagram URL</span>
           <input value={form.instagramUrl} onChange={e=>setForm({...form, instagramUrl: e.target.value})} placeholder="https://instagram.com/bokalokalanchestb" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />

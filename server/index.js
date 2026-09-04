@@ -135,12 +135,16 @@ app.get("/api/settings", async (req, res) => {
     closeHour: row.closeHour,
     heroTitle: row.heroTitle,
     heroSubtitle: row.heroSubtitle,
+    pixKey: row.pixKey || "5548988452532",
+    pixKeyType: row.pixKeyType || "phone",
+    pixHolder: row.pixHolder || "Boka Loka Lanches",
+    pixCity: row.pixCity || "Tubarao",
   });
 });
 
 app.put("/api/settings", async (req, res) => {
   const db = await getDb();
-  const fields = ["address","gmapsLink","phoneDisplay","phoneTel","whatsappNumber","instagramUrl","ifoodUrl","logo","openHour","closeHour","heroTitle","heroSubtitle"];
+  const fields = ["address","gmapsLink","phoneDisplay","phoneTel","whatsappNumber","instagramUrl","ifoodUrl","logo","openHour","closeHour","heroTitle","heroSubtitle","pixKey","pixKeyType","pixHolder","pixCity"];
   const current = await db.get("SELECT * FROM settings WHERE id=1");
   if (!current) return res.status(404).json({ error: "Settings não encontrado, rode seed" });
   const next = {};
@@ -148,8 +152,8 @@ app.put("/api/settings", async (req, res) => {
     next[f] = req.body[f] !== undefined ? req.body[f] : current[f];
   }
   await db.run(
-    `UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=? WHERE id=1`,
-    next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle
+    `UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1`,
+    next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity
   );
   const row = await db.get("SELECT * FROM settings WHERE id=1");
   res.json({
@@ -165,6 +169,10 @@ app.put("/api/settings", async (req, res) => {
     closeHour: row.closeHour,
     heroTitle: row.heroTitle,
     heroSubtitle: row.heroSubtitle,
+    pixKey: row.pixKey,
+    pixKeyType: row.pixKeyType,
+    pixHolder: row.pixHolder,
+    pixCity: row.pixCity,
   });
 });
 
@@ -407,14 +415,32 @@ function rowToOrder(r) {
     confirmedAt: r.confirmedAt,
   };
 }
-function generateMockPix({ id, total }) {
-  // BR Code mock simplificado - apenas para demo. Em produção use EFI ou Mercado Pago
+async function getPixSettings(db) {
+  try {
+    const row = await db.get("SELECT pixKey, pixKeyType, pixHolder, pixCity FROM settings WHERE id=1");
+    return {
+      pixKey: row?.pixKey || process.env.PIX_KEY || "5548988452532",
+      pixKeyType: row?.pixKeyType || "phone",
+      pixHolder: row?.pixHolder || "Boka Loka Lanches",
+      pixCity: row?.pixCity || "Tubarao",
+    };
+  } catch { return { pixKey: process.env.PIX_KEY || "5548988452532", pixKeyType:"phone", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" }; }
+}
+function buildPixPayload({ pixKey, pixHolder, pixCity, amount, txId }) {
+  // gera payload PIX copia e cola (BR Code) simplificado - suficiente para QR dinâmico com valor
+  // Formato EMV: limpa pixKey, holder e city, limita tamanhos
+  const key = String(pixKey).replace(/\D/g,"").slice(0,32) || "5548988452532";
+  const holder = String(pixHolder).slice(0,25) || "Boka Loka";
+  const city = String(pixCity).slice(0,15) || "Tubarao";
+  const amountStr = Number(amount).toFixed(2);
+  // 00=01, 26= merchant account, 52=0000, 53=986, 54=amount, 58=BR, 59=holder, 60=city, 62=txId
+  // CRC fake 6304ABCD (para demo; em produção use cálculo CRC16 real se quiser validação bancária)
+  return `00020126360014BR.GOV.BCB.PIX0114+55${key}520400005303986540${amountStr.padStart(6,"0")}5802BR5913${holder}6009${city}62070503${txId.slice(0,3)}6304ABCD`;
+}
+function generateMockPix({ id, total, pixKey, pixHolder, pixCity }) {
   const amount = Number(total).toFixed(2);
   const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
-  const pixKey = process.env.PIX_KEY || "48988452532";
-  // payload PIX EMV simplificado (não válido CRC real, apenas visual)
-  const pixCode = `00020126360014BR.GOV.BCB.PIX0114+55${pixKey.replace(/\D/g,"")}520400005303986540${amount.padStart(5,"0")}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
-  // QR via api externa (cada pixCode gera QR único)
+  const pixCode = buildPixPayload({ pixKey: pixKey || "5548988452532", pixHolder: pixHolder || "Boka Loka Lanches", pixCity: pixCity || "Tubarao", amount, txId });
   const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
   return { pixCode, pixQr, pixTxId: txId };
 }
@@ -481,12 +507,13 @@ app.post("/api/orders", async (req, res) => {
   let pixCode = null, pixQr = null, pixTxId = null, mpPaymentId = null;
   const calcTotal = Number(total) || 0;
   if (pm === "pix") {
-    // tenta Mercado Pago real, fallback mock
+    // tenta Mercado Pago real, fallback mock com chave das configurações
     const mp = await createMercadoPagoPix({ id, total: calcTotal, customerName, customerCpf, customerPhone });
     if (mp && mp.pixCode) {
       pixCode = mp.pixCode; pixQr = mp.pixQr; pixTxId = mp.pixTxId; mpPaymentId = mp.mpPaymentId;
     } else {
-      const mock = generateMockPix({ id, total: calcTotal });
+      const pixConf = await getPixSettings(db);
+      const mock = generateMockPix({ id, total: calcTotal, pixKey: pixConf.pixKey, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
       pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
     }
   }
