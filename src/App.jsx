@@ -592,10 +592,10 @@ export default function App() {
       setVerifyingPix(false);
     }
   };
-  const handleVerifyPix = async (force=false) => {
+  const handleVerifyPix = async (force=false, silent=false) => {
     if (!currentOrder) return;
-    setVerifyingPix(true);
-    setOrderError(null);
+    if (!silent) setVerifyingPix(true);
+    if (!silent) setOrderError(null);
     try {
       const res = await verifyPixOrder(currentOrder.id, force);
       if (res?.verified || res?.status==="paid" || res?.status==="confirmed") {
@@ -605,20 +605,19 @@ export default function App() {
         setToast("✅ PIX confirmado! Pedido em preparo.");
         setTimeout(()=>setToast(null), 3000);
       } else {
-        setOrderError(res?.message || "PIX ainda não pago. Pague e tente novamente em alguns segundos.");
-        // atualiza order local com status
+        if (!silent) setOrderError(res?.message || "PIX ainda não pago. Pague e tente novamente em alguns segundos.");
         if (res) setCurrentOrder(res);
       }
     } catch (e) {
-      setOrderError(e.message || "Erro ao verificar PIX");
+      if (!silent) setOrderError(e.message || "Erro ao verificar PIX");
     } finally {
-      setVerifyingPix(false);
+      if (!silent) setVerifyingPix(false);
     }
   };
-  // polling automático PIX a cada 7s
+  // polling automático PIX a cada 7s - silencioso (não mostra erro sem clique)
   useEffect(() => {
     if (checkoutStep !== "pix" || !currentOrder || currentOrder.status==="paid" || currentOrder.status==="confirmed") return;
-    const id = setInterval(()=> { handleVerifyPix(false); }, 7000);
+    const id = setInterval(()=> { handleVerifyPix(false, true); }, 7000);
     return ()=> clearInterval(id);
   }, [checkoutStep, currentOrder]);
 
