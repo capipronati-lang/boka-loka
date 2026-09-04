@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Star,
@@ -34,6 +34,12 @@ import {
 import { getProducts, getSettings, getDiscounts, getDiscountedPrice, hydrateFromSql, createOrder, verifyPixOrder } from "./lib/adminStore";
 import { DEFAULT_PRODUCTS } from "./lib/defaultData";
 
+class ErrorBoundary extends React.Component {
+  constructor(p){ super(p); this.state={hasError:false, error:null}; }
+  static getDerivedStateFromError(e){ return {hasError:true, error:e}; }
+  componentDidCatch(e,info){ console.error("ErrorBoundary",e,info); }
+  render(){ if(this.state.hasError) return <div className="fixed inset-0 z-[100] grid place-items-center bg-white p-6 text-center"><div><div className="font-black text-red-600">Erro inesperado</div><div className="mt-2 text-sm font-mono text-zinc-600 break-all">{String(this.state.error?.message||this.state.error)}</div><button onClick={()=>this.setState({hasError:false, error:null})} className="mt-4 rounded-full bg-zinc-900 px-5 py-2 text-sm font-black text-white">Tentar novamente</button></div></div>; return this.props.children; }
+}
 function Instagram({ className, ...props }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props} aria-hidden="true">
@@ -272,10 +278,10 @@ function useOpenStatus(openHour = OPEN_HOUR, closeHour = CLOSE_HOUR) {
     return () => clearInterval(id);
   }, []);
   const isOpen = useMemo(() => {
-    const h = now.getHours();
+    const hour = now.getHours();
     const close = closeHour === 0 ? 24 : closeHour;
-    if (close > openHour) return h >= openHour && h < close;
-    return h >= openHour || h < close;
+    if (close > openHour) return hour >= openHour && hour < close;
+    return hour >= openHour || hour < close;
   }, [now, openHour, closeHour]);
   const label = isOpen ? "Aberto agora" : "Fechado no momento";
   const closeLabel = closeHour === 0 ? "00h" : `${String(closeHour).padStart(2, "0")}h`;
@@ -317,20 +323,20 @@ export default function App() {
     try { return getDiscounts(); } catch { return []; }
   });
   useEffect(() => {
-    const h = () => {
+    const syncHandlerApp = () => {
       try { setDynProducts(getProducts()); } catch {}
       try { setDynSettings(getSettings()); } catch {}
       try { setDynDiscounts(getDiscounts()); } catch {}
     };
-    window.addEventListener("boka:products", h);
-    window.addEventListener("boka:settings", h);
-    window.addEventListener("boka:discounts", h);
-    window.addEventListener("storage", h);
+    window.addEventListener("boka:products", syncHandlerApp);
+    window.addEventListener("boka:settings", syncHandlerApp);
+    window.addEventListener("boka:discounts", syncHandlerApp);
+    window.addEventListener("storage", syncHandlerApp);
     return () => {
-      window.removeEventListener("boka:products", h);
-      window.removeEventListener("boka:settings", h);
-      window.removeEventListener("boka:discounts", h);
-      window.removeEventListener("storage", h);
+      window.removeEventListener("boka:products", syncHandlerApp);
+      window.removeEventListener("boka:settings", syncHandlerApp);
+      window.removeEventListener("boka:discounts", syncHandlerApp);
+      window.removeEventListener("storage", syncHandlerApp);
     };
   }, []);
   useEffect(() => {
@@ -615,6 +621,31 @@ export default function App() {
     return ()=> clearInterval(id);
   }, [checkoutStep, currentOrder]);
 
+  // captura erros globais (inclui 'h' TDZ) para não quebrar tela e mostrar toast com detalhe
+  useEffect(() => {
+    const onError = (e) => {
+      const msg = e?.message || e?.error?.message || String(e);
+      if (msg.includes("Cannot access") || msg.includes("before initialization")) {
+        console.error("Global error captured", e);
+        setOrderError(`Erro: ${msg} — feche o checkout e tente novamente. Se persistir, limpe o cache (Ctrl+Shift+R).`);
+        setToast(`Erro: ${msg}`);
+        setTimeout(()=>setToast(null), 4000);
+      }
+    };
+    const onRej = (e) => {
+      const msg = e?.reason?.message || String(e.reason||e);
+      if (msg.includes("Cannot access") || msg.includes("before initialization")) {
+        console.error("Unhandled rejection", e);
+        setOrderError(`Erro: ${msg}`);
+        setToast(`Erro: ${msg}`);
+        setTimeout(()=>setToast(null), 4000);
+      }
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRej);
+    return ()=>{ window.removeEventListener("error", onError); window.removeEventListener("unhandledrejection", onRej); };
+  }, []);
+
   const handleCall = () => {
     const tel = SETTINGS.phoneTel || PHONE_TEL;
     window.location.href = `tel:${tel}`;
@@ -642,7 +673,7 @@ export default function App() {
   const scrollToMenu = () => document.getElementById("cardapio")?.scrollIntoView({ behavior: "smooth" });
   const currentFlavor = HERO_FLAVORS[activeFlavor];
 
-  return (
+  return (<ErrorBoundary>
     <div className="min-h-screen bg-[#fffbf0] text-zinc-900 selection:bg-[#e30613] selection:text-white">
       {/* HEADER — adulto, limpo, branco + vermelho/amarelo */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/80 glass-white">
@@ -1370,6 +1401,6 @@ export default function App() {
       </AnimatePresence>
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "Restaurant", name: "Boka Loka Lanches", description: "Nossos lanches são uma amostra de sabores e criatividade.", address: { "@type": "PostalAddress", streetAddress: SETTINGS.address, addressLocality: "Tubarão", addressRegion: "SC", postalCode: "88701-730", addressCountry: "BR" }, telephone: SETTINGS.whatsappNumber, url: SETTINGS.instagramUrl, servesCuisine: "Hambúrguer", priceRange: "R$", aggregateRating: { "@type": "AggregateRating", ratingValue: "4.6", reviewCount: "1600" }, openingHours: "Mo-Su 18:00-00:00" }) }} />
-    </div>
+    </div></ErrorBoundary>
   );
 }

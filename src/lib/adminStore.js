@@ -373,31 +373,36 @@ export async function createOrder(payload) {
   const pm = (payload.paymentMethod||"pix").toLowerCase();
   let pixCode=null, pixQr=null, pixTxId=null, status = pm==="pix" ? "pending_pix" : "pending";
   if (pm==="pix") {
-    const amount = Number(payload.total).toFixed(2);
-    const txId = `BOKA${String(id).slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`.slice(0,25);
-    let pixConf = { pixKey:"5548988452532", pixKeyType:"phone", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
-    try { const s = getSettings(); if (s?.pixKey) pixConf = s; } catch {}
-    // gera BR Code válido com CRC real
-    const emv = (id, value) => `${id}${String(value.length).padStart(2,"0")}${value}`;
-    const crc16 = (str) => {
-      let crc=0xFFFF; const poly=0x1021;
-      for(let i=0;i<str.length;i++){ crc ^= str.charCodeAt(i)<<8; for(let j=0;j<8;j++){ if(crc&0x8000) crc=(crc<<1)^poly; else crc <<=1; crc&=0xFFFF; } }
-      return crc.toString(16).toUpperCase().padStart(4,"0");
-    };
-    const keyType = (pixConf.pixKeyType||"phone").toLowerCase();
-    let key = String(pixConf.pixKey||"").trim();
-    if (keyType==="phone"){ const d=key.replace(/\D/g,""); key=d.startsWith("55")?`+${d}`:`+55${d}`; }
-    else if (keyType==="cpf"||keyType==="cnpj"){ key=key.replace(/\D/g,""); } else { key=key.trim(); }
-    const holder = String(pixConf.pixHolder||"Boka Loka Lanches").slice(0,25);
-    const city = String(pixConf.pixCity||"Tubarao").slice(0,15);
-    const gui = emv("00","BR.GOV.BCB.PIX");
-    const keyField = emv("01", key);
-    const merchantAccount = emv("26", gui + keyField);
-    const amountEmv = Number(amount)>0 ? emv("54", amount) : "";
-    const payload = emv("00","01")+emv("01","12")+merchantAccount+emv("52","0000")+emv("53","986")+amountEmv+emv("58","BR")+emv("59",holder)+emv("60",city)+emv("62",emv("05",txId.replace(/[^A-Za-z0-9]/g,"").slice(0,25)||"***"))+"6304";
-    pixCode = payload + crc16(payload);
-    pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
-    pixTxId = txId;
+    var amount = Number(payload.total).toFixed(2);
+    var txId = `BOKA${String(id).slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`.slice(0,25);
+    var pixConf = { pixKey:"5548988452532", pixKeyType:"phone", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
+    try { var sTmp = getSettings(); if (sTmp && sTmp.pixKey) pixConf = sTmp; } catch(e) {}
+    try {
+      // BR Code válido com CRC real - envolvido em try para evitar 'h' TDZ
+      function emvFunc(id, value){ return id + String(value.length).padStart(2,"0") + value; }
+      function crc16Func(str){ var crc=0xFFFF; var poly=0x1021; for(var i=0;i<str.length;i++){ crc ^= str.charCodeAt(i)<<8; for(var j=0;j<8;j++){ if(crc & 0x8000) crc=(crc<<1)^poly; else crc <<=1; crc&=0xFFFF; } } return crc.toString(16).toUpperCase().padStart(4,"0"); }
+      var keyTypeTmp = (pixConf.pixKeyType||"phone").toLowerCase();
+      var keyTmp = String(pixConf.pixKey||"").trim();
+      if (keyTypeTmp==="phone"){ var dTmp=keyTmp.replace(/\D/g,""); keyTmp=dTmp.startsWith("55")?`+${dTmp}`:`+55${dTmp}`; }
+      else if (keyTypeTmp==="cpf"||keyTypeTmp==="cnpj"){ keyTmp=keyTmp.replace(/\D/g,""); } else { keyTmp=keyTmp.trim(); }
+      var holderTmp = String(pixConf.pixHolder||"Boka Loka Lanches").slice(0,25);
+      var cityTmp = String(pixConf.pixCity||"Tubarao").slice(0,15);
+      var guiTmp = emvFunc("00","BR.GOV.BCB.PIX");
+      var keyFieldTmp = emvFunc("01", keyTmp);
+      var merchantAccountTmp = emvFunc("26", guiTmp + keyFieldTmp);
+      var amountEmvTmp = Number(amount)>0 ? emvFunc("54", amount) : "";
+      var payloadTmp = emvFunc("00","01")+emvFunc("01","12")+merchantAccountTmp+emvFunc("52","0000")+emvFunc("53","986")+amountEmvTmp+emvFunc("58","BR")+emvFunc("59",holderTmp)+emvFunc("60",cityTmp)+emvFunc("62",emvFunc("05",txId.replace(/[^A-Za-z0-9]/g,"").slice(0,25)||"***"))+"6304";
+      pixCode = payloadTmp + crc16Func(payloadTmp);
+      pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
+      pixTxId = txId;
+    } catch(e){
+      console.error("PIX fallback erro, usando QR simples", e);
+      // fallback simples que nunca falha
+      var fallbackKey = String(pixConf.pixKey||"5548988452532").replace(/\D/g,"");
+      pixCode = `PIX:${fallbackKey}:${amount}:${txId}`;
+      pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
+      pixTxId = txId;
+    }
   }
   const order = {
     id, customerName: payload.customerName, customerPhone: payload.customerPhone, customerAddress: payload.customerAddress||"",

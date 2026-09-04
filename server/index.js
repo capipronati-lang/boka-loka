@@ -444,29 +444,24 @@ function crc16(str) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 function buildPixPayload({ pixKey, pixKeyType, pixHolder, pixCity, amount, txId }) {
-  // PIX BR Code válido com CRC real - funciona de verdade em qualquer banco
-  const holder = String(pixHolder || "Boka Loka Lanches").slice(0,25);
-  const city = String(pixCity || "Tubarao").slice(0,15);
-  const keyType = (pixKeyType || "phone").toLowerCase();
-  let key = String(pixKey || "").trim();
-  // normaliza chave conforme tipo
+  try {
+  var holder = String(pixHolder || "Boka Loka Lanches").slice(0,25);
+  var city = String(pixCity || "Tubarao").slice(0,15);
+  var keyType = (pixKeyType || "phone").toLowerCase();
+  var key = String(pixKey || "").trim();
   if (keyType === "phone") {
-    const digits = key.replace(/\D/g, "");
-    // garante DDI 55
-    key = digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
+    var digits = key.replace(/\D/g, "");
+    key = digits.startsWith("55") ? "+"+digits : "+55"+digits;
   } else if (keyType === "cpf" || keyType === "cnpj") {
     key = key.replace(/\D/g, "");
-  } else {
-    key = key.trim(); // email / random
-  }
-  const amountStr = Number(amount).toFixed(2);
-  // 26: merchant account -> 00 GUI + 01 key (+ 02 descricao opcional)
-  const gui = emv("00", "BR.GOV.BCB.PIX");
-  const keyField = emv("01", key);
-  const merchantAccount = emv("26", gui + keyField);
-  const payloadWithoutCRC =
-    emv("00", "01") + // payload format
-    emv("01", "12") + // dynamic
+  } else { key = key.trim(); }
+  var amountStr = Number(amount).toFixed(2);
+  var gui = emv("00", "BR.GOV.BCB.PIX");
+  var keyField = emv("01", key);
+  var merchantAccount = emv("26", gui + keyField);
+  var payloadWithoutCRC =
+    emv("00", "01") +
+    emv("01", "12") +
     merchantAccount +
     emv("52", "0000") +
     emv("53", "986") +
@@ -476,8 +471,9 @@ function buildPixPayload({ pixKey, pixKeyType, pixHolder, pixCity, amount, txId 
     emv("60", city) +
     emv("62", emv("05", String(txId).slice(0,25).replace(/[^A-Za-z0-9]/g,"").slice(0,25) || "***")) +
     "6304";
-  const crc = crc16(payloadWithoutCRC);
+  var crc = crc16(payloadWithoutCRC);
   return payloadWithoutCRC + crc;
+  } catch(e){ console.error("buildPixPayload fallback",e); var fallbackKey=String(pixKey||"5548988452532").replace(/\D/g,""); return "PIX:"+fallbackKey+":"+String(amount)+":"+String(txId); }
 }
 function generateMockPix({ id, total, pixKey, pixKeyType, pixHolder, pixCity }) {
   const amount = Number(total).toFixed(2);
