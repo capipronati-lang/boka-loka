@@ -41,7 +41,8 @@ export async function getDb() {
         pixKey TEXT,
         pixKeyType TEXT,
         pixHolder TEXT,
-        pixCity TEXT
+        pixCity TEXT,
+        pixBank TEXT
       );
 
       CREATE TABLE IF NOT EXISTS admins (
@@ -100,6 +101,7 @@ export async function getDb() {
     try { await db.exec(`ALTER TABLE settings ADD COLUMN pixKeyType TEXT`); } catch {}
     try { await db.exec(`ALTER TABLE settings ADD COLUMN pixHolder TEXT`); } catch {}
     try { await db.exec(`ALTER TABLE settings ADD COLUMN pixCity TEXT`); } catch {}
+    try { await db.exec(`ALTER TABLE settings ADD COLUMN pixBank TEXT`); } catch {}
     return db;
   });
   return dbPromise;

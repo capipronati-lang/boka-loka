@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS = {
   pixKeyType: "phone", // phone | cpf | email | random
   pixHolder: "Boka Loka Lanches",
   pixCity: "Tubarao",
+  pixBank: "Inter", // Inter | Nubank | BB | Bradesco | Itau | Santander | Caixa | C6 | Neon | PicPay | Mercado Pago | PagBank | Stone | Sicredi | Sicoob | Banrisul | BTG | Original | Safra | Outros - qualquer banco funciona (DICT)
 };
 
 export const DEFAULT_ADMINS = [

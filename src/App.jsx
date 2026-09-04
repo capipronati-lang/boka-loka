@@ -364,7 +364,7 @@ export default function App() {
   }, [dynSettings]);
 
   const EFFECTIVE_PRODUCTS = dynProducts && dynProducts.length ? dynProducts : MENU_PRODUCTS;
-  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: PHONE_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR, pixKey: "5548988452532", pixKeyType: "phone", pixHolder: "Boka Loka Lanches", pixCity: "Tubarao" };
+  const SETTINGS_RAW = dynSettings || { address: ADDRESS, gmapsLink: GMAPS_LINK, phoneDisplay: PHONE_DISPLAY, phoneTel: PHONE_TEL, whatsappNumber: WHATSAPP_NUMBER, instagramUrl: INSTAGRAM_URL, ifoodUrl: IFOOD_URL, logo: "/logo-nova.avif", openHour: OPEN_HOUR, closeHour: CLOSE_HOUR, pixKey: "5548988452532", pixKeyType: "phone", pixHolder: "Boka Loka Lanches", pixCity: "Tubarao", pixBank: "Inter" };
   const SETTINGS = {
     ...SETTINGS_RAW,
     whatsappNumber: (SETTINGS_RAW.whatsappNumber || "").replace(/\D/g,"") || WHATSAPP_NUMBER,
@@ -378,6 +378,7 @@ export default function App() {
     pixKeyType: SETTINGS_RAW.pixKeyType || "phone",
     pixHolder: SETTINGS_RAW.pixHolder || "Boka Loka Lanches",
     pixCity: SETTINGS_RAW.pixCity || "Tubarao",
+    pixBank: SETTINGS_RAW.pixBank || "Inter",
   };
   const GMAPS_LINK_DYN = SETTINGS.gmapsLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(SETTINGS.address)}`;
   const GMAPS_EMBED_DYN = `https://maps.google.com/maps?q=${encodeURIComponent(SETTINGS.address)}&t=&z=17&ie=UTF8&iwloc=&output=embed`;
@@ -719,10 +720,10 @@ export default function App() {
               <ShoppingBag className="h-[18px] w-[18px]" />
               <AnimatePresence>{cartCount > 0 && <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#e30613] px-1 text-[11px] font-black leading-none text-white shadow-lg">{cartCount}</motion.span>}</AnimatePresence>
             </button>
-            <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="hidden h-11 items-center gap-2 rounded-full bg-[#25d366] px-6 text-[13.5px] font-extrabold text-white shadow-[0_8px_24px_rgba(37,211,102,0.28)] transition hover:brightness-110 active:scale-[0.98] sm:inline-flex">
-              <MessageCircle className="h-4 w-4 fill-white" />
-              Pedir agora
-            </a>
+            <button onClick={() => setIsCartOpen(true)} className="hidden h-11 items-center gap-2 rounded-full bg-[#e30613] px-6 text-[13.5px] font-extrabold text-white shadow-[0_8px_24px_rgba(227,6,19,0.28)] transition hover:brightness-110 active:scale-[0.98] sm:inline-flex">
+              <ShoppingBag className="h-4 w-4" />
+              Pedir no site
+            </button>
             <button onClick={() => setIsMenuOpen((v) => !v)} className="grid h-11 w-11 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-900 lg:hidden" aria-label="Menu">
               {isMenuOpen ? <X className="h-5 w-5" /> : <AlignJustify className="h-5 w-5" />}
             </button>
@@ -742,7 +743,7 @@ export default function App() {
                 ))}
                 <div className="grid grid-cols-2 gap-3 pt-3">
                   <a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="grid place-items-center rounded-full bg-zinc-900 py-3 text-sm font-black text-white">Pedir no iFood</a>
-                  <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="grid place-items-center rounded-full bg-[#e30613] py-3 text-sm font-black text-white">WhatsApp</a>
+                  <button onClick={() => { setIsMenuOpen(false); setIsCartOpen(true); }} className="grid place-items-center rounded-full bg-[#e30613] py-3 text-sm font-black text-white">Pedir no site</button>
                 </div>
                 <div className="flex items-center justify-center gap-2 pt-3 text-xs text-zinc-500">
                   <span className={`h-2 w-2 rounded-full ${isOpen ? "bg-emerald-500" : "bg-zinc-400"}`} />
@@ -785,10 +786,10 @@ export default function App() {
                   <ShoppingBag className="h-4 w-4" />
                   FAZER PEDIDO
                 </button>
-                <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[13px] font-black tracking-wide text-zinc-800 ring-1 ring-zinc-300 transition hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]">
-                  <MessageCircle className="h-4 w-4" />
-                  VER NO WHATSAPP
-                </a>
+                <button onClick={scrollToMenu} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[13px] font-black tracking-wide text-zinc-800 ring-1 ring-zinc-300 transition hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]">
+                  <Utensils className="h-4 w-4" />
+                  VER CARDÁPIO
+                </button>
               </motion.div>
 
               <motion.button initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.5 }} onClick={handleSaveContact} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#ffc300]/50 bg-[#fff9d6] px-4 py-2 text-[11px] font-black tracking-[0.08em] text-[#a16207] transition hover:bg-[#ffc300] hover:text-zinc-900 active:scale-[0.98]">
@@ -922,12 +923,12 @@ export default function App() {
                   <span className="grid h-10 w-10 place-items-center rounded-full bg-[#e30613] text-white"><ShoppingBag className="h-5 w-5" /></span>
                   <div>
                     <div className="text-sm font-black text-zinc-900">{cartCount} {cartCount === 1 ? "item" : "itens"} • {formatBRL(cartTotal)}</div>
-                    <div className="text-xs font-medium text-zinc-500">Pronto para finalizar no WhatsApp</div>
+                    <div className="text-xs font-medium text-zinc-500">Pronto para pagar no site</div>
                   </div>
                 </div>
                 <div className="flex w-full gap-2 sm:w-auto">
                   <button onClick={() => setIsCartOpen(true)} className="flex-1 rounded-full border border-zinc-300 bg-white px-5 py-2.5 text-sm font-bold text-zinc-900 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 sm:flex-none">Ver carrinho</button>
-                  <button onClick={handleWhatsAppCheckout} className="flex-1 rounded-full bg-[#25d366] px-5 py-2.5 text-sm font-black text-white hover:brightness-110 sm:flex-none">Finalizar no WhatsApp</button>
+                  <button onClick={handleOpenSiteCheckout} className="flex-1 rounded-full bg-[#e30613] px-5 py-2.5 text-sm font-black text-white hover:brightness-110 sm:flex-none">Pagar no site</button>
                 </div>
               </motion.div>
             )}
@@ -968,7 +969,7 @@ export default function App() {
                 <div className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500"><Clock className="h-3.5 w-3.5" />Todos os dias das {String(SETTINGS.openHour).padStart(2,"0")}h às {SETTINGS.closeHour===0?"00":String(SETTINGS.closeHour).padStart(2,"0")}h — verificado</div>
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <a href={GMAPS_LINK_DYN} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#e30613] px-6 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(227,6,19,0.25)] hover:bg-[#b8050f] active:scale-[0.98]"><Navigation className="h-4 w-4" />Como chegar</a>
-                  <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Chamar no WhatsApp</a>
+                  <button onClick={handleOpenSiteCheckout} className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900 active:scale-[0.98]"><ShoppingBag className="h-4 w-4" />Pagar no site</button>
                 </div>
               </div>
             </motion.div>
@@ -1177,7 +1178,7 @@ export default function App() {
                 {cart.length === 0 ? (
                   <div className="grid place-items-center gap-4 py-16 text-center">
                     <span className="grid h-16 w-16 place-items-center rounded-full bg-zinc-100 text-zinc-400"><ShoppingCart className="h-7 w-7" /></span>
-                    <div><div className="font-display text-[18px] font-black text-zinc-900">CARRINHO VAZIO</div><div className="mt-1 max-w-[260px] text-sm font-medium leading-relaxed text-zinc-500">Adicione seus lanches favoritos e finalize direto no WhatsApp em segundos.</div></div>
+                    <div><div className="font-display text-[18px] font-black text-zinc-900">CARRINHO VAZIO</div><div className="mt-1 max-w-[260px] text-sm font-medium leading-relaxed text-zinc-500">Adicione seus lanches favoritos e finalize no site em segundos.</div></div>
                     <button onClick={() => setIsCartOpen(false)} className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-black text-white hover:bg-black">Ver cardápio</button>
                   </div>
                 ) : (
@@ -1218,7 +1219,7 @@ export default function App() {
                     <div className="flex justify-between text-sm font-medium text-zinc-400"><span>Subtotal</span><span className="font-bold text-white">{formatBRL(cartTotal)}</span></div>
                     <div className="flex justify-between text-sm font-medium text-zinc-400"><span>Entrega</span><span className="font-bold text-emerald-400">a combinar</span></div>
                     <div className="flex justify-between border-t border-white/10 pt-2 text-base font-black"><span>Total</span><span className="font-display text-[18px]">{formatBRL(cartTotal)}</span></div>
-                    <div className="text-xs font-medium text-zinc-400">Taxa de entrega informada no WhatsApp</div>
+                    <div className="text-xs font-medium text-zinc-400">Taxa de entrega a combinar no checkout</div>
                   </div>
 
                   <div className="mt-4">
@@ -1238,9 +1239,8 @@ export default function App() {
                   </div>
 
                   <button onClick={handleOpenSiteCheckout} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#e30613] py-3.5 text-sm font-black text-white shadow-[0_10px_30px_rgba(227,6,19,0.3)] hover:bg-[#b8050f] active:scale-[0.98]"><ShoppingBag className="h-5 w-5" />Pagar no site — {formatBRL(cartTotal)}</button>
-                  <div className="mt-1 text-center text-[11px] font-bold text-zinc-500">PIX verificado antes de confirmar • sem WhatsApp</div>
-                  <button onClick={handleWhatsAppCheckout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-black text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Ou finalizar via WhatsApp</button>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="mt-1 text-center text-[11px] font-bold text-zinc-500">PIX verificado antes de confirmar • 100% no site</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     <a href={`tel:${SETTINGS.phoneTel}`} className="flex items-center justify-center gap-1.5 rounded-full bg-white py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900"><Phone className="h-4 w-4" />Ligar agora</a>
                     <a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 rounded-full border border-zinc-300 bg-white py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#ea1d2c] text-[10px] font-black text-white">iF</span>iFood</a>
                   </div>
@@ -1365,27 +1365,27 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* MOBILE STICKY BAR — Ligar + WhatsApp + Carrinho (melhor conversão mobile) */}
+      {/* MOBILE STICKY BAR — Pagar no site + Carrinho */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden" style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}>
         <div className="mx-auto flex max-w-[480px] items-center gap-2">
           <a href={`tel:${SETTINGS.phoneTel}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-white py-3 text-[13px] font-black text-zinc-900 ring-1 ring-zinc-300 active:scale-[0.97]">
             <Phone className="h-4 w-4" />
             Ligar
           </a>
-          <a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#25d366] py-3 text-[13px] font-black text-white active:scale-[0.97]">
-            <MessageCircle className="h-4 w-4 fill-white" />
-            WhatsApp
-          </a>
-          <button onClick={() => setIsCartOpen(true)} className="relative flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#e30613] py-3 text-[13px] font-black text-white active:scale-[0.97]">
+          <button onClick={handleOpenSiteCheckout} className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#e30613] py-3 text-[13px] font-black text-white active:scale-[0.97]">
+            <QrCode className="h-4 w-4" />
+            Pagar
+          </button>
+          <button onClick={() => setIsCartOpen(true)} className="relative flex flex-1 items-center justify-center gap-1.5 rounded-full bg-zinc-900 py-3 text-[13px] font-black text-white active:scale-[0.97]">
             <ShoppingBag className="h-4 w-4" />
             Carrinho
-            {cartCount > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-zinc-900 px-1 text-[11px] font-black text-white">{cartCount}</span>}
+            {cartCount > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#e30613] px-1 text-[11px] font-black text-white">{cartCount}</span>}
           </button>
         </div>
       </div>
 
-      {/* FLOATING WHATSAPP — desktop only (mobile usa barra) */}
-      <motion.a href={getWhatsAppHref()} target="_blank" rel="noopener noreferrer" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: "spring", stiffness: 300, damping: 18 }} className="fixed bottom-5 right-5 z-30 hidden h-[58px] w-[58px] place-items-center rounded-full bg-[#25d366] text-white shadow-[0_12px_36px_rgba(37,211,102,0.45)] hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-[60px] sm:w-[60px] lg:grid" aria-label="Chamar no WhatsApp">
+      {/* FLOATING WHATSAPP — apenas contato, sem carrinho */}
+      <motion.a href={`https://wa.me/${(SETTINGS.whatsappNumber||WHATSAPP_NUMBER).replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: "spring", stiffness: 300, damping: 18 }} className="fixed bottom-5 right-5 z-30 hidden h-[58px] w-[58px] place-items-center rounded-full bg-[#25d366] text-white shadow-[0_12px_36px_rgba(37,211,102,0.45)] hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-[60px] sm:w-[60px] lg:grid" aria-label="WhatsApp contato">
         <span className="absolute inset-0 animate-ping rounded-full bg-[#25d366]/40" />
         <span className="absolute inset-0 animate-ping rounded-full bg-[#25d366]/20 [animation-delay:0.7s]" />
         <MessageCircle className="relative h-7 w-7 fill-white" />

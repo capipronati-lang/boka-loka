@@ -139,12 +139,13 @@ app.get("/api/settings", async (req, res) => {
     pixKeyType: row.pixKeyType || "phone",
     pixHolder: row.pixHolder || "Boka Loka Lanches",
     pixCity: row.pixCity || "Tubarao",
+    pixBank: row.pixBank || "Inter",
   });
 });
 
 app.put("/api/settings", async (req, res) => {
   const db = await getDb();
-  const fields = ["address","gmapsLink","phoneDisplay","phoneTel","whatsappNumber","instagramUrl","ifoodUrl","logo","openHour","closeHour","heroTitle","heroSubtitle","pixKey","pixKeyType","pixHolder","pixCity"];
+  const fields = ["address","gmapsLink","phoneDisplay","phoneTel","whatsappNumber","instagramUrl","ifoodUrl","logo","openHour","closeHour","heroTitle","heroSubtitle","pixKey","pixKeyType","pixHolder","pixCity","pixBank"];
   const current = await db.get("SELECT * FROM settings WHERE id=1");
   if (!current) return res.status(404).json({ error: "Settings não encontrado, rode seed" });
   const next = {};
@@ -152,8 +153,8 @@ app.put("/api/settings", async (req, res) => {
     next[f] = req.body[f] !== undefined ? req.body[f] : current[f];
   }
   await db.run(
-    `UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1`,
-    next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity
+    `UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=?, pixBank=? WHERE id=1`,
+    next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity, next.pixBank
   );
   const row = await db.get("SELECT * FROM settings WHERE id=1");
   res.json({
@@ -173,6 +174,7 @@ app.put("/api/settings", async (req, res) => {
     pixKeyType: row.pixKeyType,
     pixHolder: row.pixHolder,
     pixCity: row.pixCity,
+    pixBank: row.pixBank,
   });
 });
 

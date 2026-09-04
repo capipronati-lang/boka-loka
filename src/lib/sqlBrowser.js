@@ -72,7 +72,8 @@ async function getDb() {
       pixKey TEXT,
       pixKeyType TEXT,
       pixHolder TEXT,
-      pixCity TEXT
+      pixCity TEXT,
+      pixBank TEXT
     );
     CREATE TABLE IF NOT EXISTS admins (
       id TEXT PRIMARY KEY,
@@ -127,6 +128,7 @@ async function getDb() {
   try { db.exec(`ALTER TABLE settings ADD COLUMN pixKeyType TEXT`); } catch {}
   try { db.exec(`ALTER TABLE settings ADD COLUMN pixHolder TEXT`); } catch {}
   try { db.exec(`ALTER TABLE settings ADD COLUMN pixCity TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN pixBank TEXT`); } catch {}
   // seed se vazio
   const prodCount = db.exec("SELECT COUNT(*) as c FROM products")[0]?.values[0]?.[0] || 0;
   if (prodCount === 0) {
@@ -139,15 +141,16 @@ async function getDb() {
   const setCount = db.exec("SELECT COUNT(*) as c FROM settings WHERE id=1")[0]?.values[0]?.[0] || 0;
   if (setCount === 0) {
     const s = DEFAULT_SETTINGS;
-    db.run("INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [s.address, s.gmapsLink, s.phoneDisplay, s.phoneTel, s.whatsappNumber, s.instagramUrl, s.ifoodUrl, s.logo, s.openHour, s.closeHour, s.heroTitle, s.heroSubtitle, s.pixKey||"5548988452532", s.pixKeyType||"phone", s.pixHolder||"Boka Loka Lanches", s.pixCity||"Tubarao"]);
+    db.run("INSERT INTO settings (id, address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity, pixBank) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [s.address, s.gmapsLink, s.phoneDisplay, s.phoneTel, s.whatsappNumber, s.instagramUrl, s.ifoodUrl, s.logo, s.openHour, s.closeHour, s.heroTitle, s.heroSubtitle, s.pixKey||"5548988452532", s.pixKeyType||"phone", s.pixHolder||"Boka Loka Lanches", s.pixCity||"Tubarao", s.pixBank||"Inter"]);
   } else {
-    // garante pixKey preenchido se vazio
     try {
-      const cur = db.exec("SELECT pixKey FROM settings WHERE id=1")[0]?.values[0]?.[0];
-      if (!cur) {
-        db.run("UPDATE settings SET pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1",
-          [DEFAULT_SETTINGS.pixKey||"5548988452532", DEFAULT_SETTINGS.pixKeyType||"phone", DEFAULT_SETTINGS.pixHolder||"Boka Loka Lanches", DEFAULT_SETTINGS.pixCity||"Tubarao"]);
+      const cur = db.exec("SELECT pixKey, pixBank FROM settings WHERE id=1")[0]?.values[0];
+      if (!cur || !cur[0]) {
+        db.run("UPDATE settings SET pixKey=?, pixKeyType=?, pixHolder=?, pixCity=?, pixBank=? WHERE id=1",
+          [DEFAULT_SETTINGS.pixKey||"5548988452532", DEFAULT_SETTINGS.pixKeyType||"phone", DEFAULT_SETTINGS.pixHolder||"Boka Loka Lanches", DEFAULT_SETTINGS.pixCity||"Tubarao", DEFAULT_SETTINGS.pixBank||"Inter"]);
+      } else if (!cur[1]) {
+        db.run("UPDATE settings SET pixBank=? WHERE id=1", [DEFAULT_SETTINGS.pixBank||"Inter"]);
       }
     } catch {}
   }
@@ -272,7 +275,7 @@ export async function sqlSoftDeleteProduct(id) {
 
 export async function sqlGetSettings() {
   const db = await getDb();
-  const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity FROM settings WHERE id=1");
+  const res = db.exec("SELECT address, gmapsLink, phoneDisplay, phoneTel, whatsappNumber, instagramUrl, ifoodUrl, logo, openHour, closeHour, heroTitle, heroSubtitle, pixKey, pixKeyType, pixHolder, pixCity, pixBank FROM settings WHERE id=1");
   if (!res[0] || !res[0].values[0]) return null;
   const v = res[0].values[0];
   let whatsappNumber = v[4];
@@ -287,14 +290,15 @@ export async function sqlGetSettings() {
     pixKeyType: v[13] || "phone",
     pixHolder: v[14] || "Boka Loka Lanches",
     pixCity: v[15] || "Tubarao",
+    pixBank: v[16] || DEFAULT_SETTINGS.pixBank || "Inter",
   };
 }
 export async function sqlSaveSettings(settings) {
   const db = await getDb();
   const cur = await sqlGetSettings();
   const next = { ...cur, ...settings };
-  db.run("UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=? WHERE id=1",
-    [next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity]);
+  db.run("UPDATE settings SET address=?, gmapsLink=?, phoneDisplay=?, phoneTel=?, whatsappNumber=?, instagramUrl=?, ifoodUrl=?, logo=?, openHour=?, closeHour=?, heroTitle=?, heroSubtitle=?, pixKey=?, pixKeyType=?, pixHolder=?, pixCity=?, pixBank=? WHERE id=1",
+    [next.address, next.gmapsLink, next.phoneDisplay, next.phoneTel, next.whatsappNumber, next.instagramUrl, next.ifoodUrl, next.logo, next.openHour, next.closeHour, next.heroTitle, next.heroSubtitle, next.pixKey, next.pixKeyType, next.pixHolder, next.pixCity, next.pixBank]);
   saveDb();
   return next;
 }
