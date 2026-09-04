@@ -426,21 +426,63 @@ async function getPixSettings(db) {
     };
   } catch { return { pixKey: process.env.PIX_KEY || "5548988452532", pixKeyType:"phone", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" }; }
 }
-function buildPixPayload({ pixKey, pixHolder, pixCity, amount, txId }) {
-  // gera payload PIX copia e cola (BR Code) simplificado - suficiente para QR dinâmico com valor
-  // Formato EMV: limpa pixKey, holder e city, limita tamanhos
-  const key = String(pixKey).replace(/\D/g,"").slice(0,32) || "5548988452532";
-  const holder = String(pixHolder).slice(0,25) || "Boka Loka";
-  const city = String(pixCity).slice(0,15) || "Tubarao";
-  const amountStr = Number(amount).toFixed(2);
-  // 00=01, 26= merchant account, 52=0000, 53=986, 54=amount, 58=BR, 59=holder, 60=city, 62=txId
-  // CRC fake 6304ABCD (para demo; em produção use cálculo CRC16 real se quiser validação bancária)
-  return `00020126360014BR.GOV.BCB.PIX0114+55${key}520400005303986540${amountStr.padStart(6,"0")}5802BR5913${holder}6009${city}62070503${txId.slice(0,3)}6304ABCD`;
+function emv(id, value) {
+  const len = String(value.length).padStart(2, "0");
+  return `${id}${len}${value}`;
 }
-function generateMockPix({ id, total, pixKey, pixHolder, pixCity }) {
+function crc16(str) {
+  let crc = 0xFFFF;
+  const poly = 0x1021;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x8000) crc = (crc << 1) ^ poly;
+      else crc <<= 1;
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+function buildPixPayload({ pixKey, pixKeyType, pixHolder, pixCity, amount, txId }) {
+  // PIX BR Code válido com CRC real - funciona de verdade em qualquer banco
+  const holder = String(pixHolder || "Boka Loka Lanches").slice(0,25);
+  const city = String(pixCity || "Tubarao").slice(0,15);
+  const keyType = (pixKeyType || "phone").toLowerCase();
+  let key = String(pixKey || "").trim();
+  // normaliza chave conforme tipo
+  if (keyType === "phone") {
+    const digits = key.replace(/\D/g, "");
+    // garante DDI 55
+    key = digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
+  } else if (keyType === "cpf" || keyType === "cnpj") {
+    key = key.replace(/\D/g, "");
+  } else {
+    key = key.trim(); // email / random
+  }
+  const amountStr = Number(amount).toFixed(2);
+  // 26: merchant account -> 00 GUI + 01 key (+ 02 descricao opcional)
+  const gui = emv("00", "BR.GOV.BCB.PIX");
+  const keyField = emv("01", key);
+  const merchantAccount = emv("26", gui + keyField);
+  const payloadWithoutCRC =
+    emv("00", "01") + // payload format
+    emv("01", "12") + // dynamic
+    merchantAccount +
+    emv("52", "0000") +
+    emv("53", "986") +
+    (amountStr && Number(amountStr) > 0 ? emv("54", amountStr) : "") +
+    emv("58", "BR") +
+    emv("59", holder) +
+    emv("60", city) +
+    emv("62", emv("05", String(txId).slice(0,25).replace(/[^A-Za-z0-9]/g,"").slice(0,25) || "***")) +
+    "6304";
+  const crc = crc16(payloadWithoutCRC);
+  return payloadWithoutCRC + crc;
+}
+function generateMockPix({ id, total, pixKey, pixKeyType, pixHolder, pixCity }) {
   const amount = Number(total).toFixed(2);
-  const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
-  const pixCode = buildPixPayload({ pixKey: pixKey || "5548988452532", pixHolder: pixHolder || "Boka Loka Lanches", pixCity: pixCity || "Tubarao", amount, txId });
+  const txId = `BOKA${String(id).slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`.slice(0,25);
+  const pixCode = buildPixPayload({ pixKey: pixKey || "5548988452532", pixKeyType: pixKeyType || "phone", pixHolder: pixHolder || "Boka Loka Lanches", pixCity: pixCity || "Tubarao", amount, txId });
   const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
   return { pixCode, pixQr, pixTxId: txId };
 }
@@ -513,7 +555,7 @@ app.post("/api/orders", async (req, res) => {
       pixCode = mp.pixCode; pixQr = mp.pixQr; pixTxId = mp.pixTxId; mpPaymentId = mp.mpPaymentId;
     } else {
       const pixConf = await getPixSettings(db);
-      const mock = generateMockPix({ id, total: calcTotal, pixKey: pixConf.pixKey, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
+      const mock = generateMockPix({ id, total: calcTotal, pixKey: pixConf.pixKey, pixKeyType: pixConf.pixKeyType, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
       pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
     }
   }

@@ -426,17 +426,57 @@ export async function sqlGetOrder(id) {
   row.total = Number(row.total);
   return row;
 }
-function buildPixPayloadBrowser({ pixKey, pixHolder, pixCity, amount, txId }) {
-  const key = String(pixKey).replace(/\D/g,"").slice(0,32) || "5548988452532";
-  const holder = String(pixHolder).slice(0,25) || "Boka Loka";
-  const city = String(pixCity).slice(0,15) || "Tubarao";
-  const amountStr = Number(amount).toFixed(2);
-  return `00020126360014BR.GOV.BCB.PIX0114+55${key}520400005303986540${amountStr.padStart(6,"0")}5802BR5913${holder}6009${city}62070503${txId.slice(0,3)}6304ABCD`;
+function emvBrowser(id, value) {
+  const len = String(value.length).padStart(2, "0");
+  return `${id}${len}${value}`;
 }
-function generateMockPixBrowser({ id, total, pixKey, pixHolder, pixCity }) {
+function crc16Browser(str) {
+  let crc = 0xFFFF;
+  const poly = 0x1021;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x8000) crc = (crc << 1) ^ poly;
+      else crc <<= 1;
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+function buildPixPayloadBrowser({ pixKey, pixKeyType, pixHolder, pixCity, amount, txId }) {
+  const holder = String(pixHolder || "Boka Loka Lanches").slice(0,25);
+  const city = String(pixCity || "Tubarao").slice(0,15);
+  const keyType = (pixKeyType || "phone").toLowerCase();
+  let key = String(pixKey || "").trim();
+  if (keyType === "phone") {
+    const digits = key.replace(/\D/g, "");
+    key = digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
+  } else if (keyType === "cpf" || keyType === "cnpj") {
+    key = key.replace(/\D/g, "");
+  } else { key = key.trim(); }
+  const amountStr = Number(amount).toFixed(2);
+  const gui = emvBrowser("00", "BR.GOV.BCB.PIX");
+  const keyField = emvBrowser("01", key);
+  const merchantAccount = emvBrowser("26", gui + keyField);
+  const payloadWithoutCRC =
+    emvBrowser("00", "01") +
+    emvBrowser("01", "12") +
+    merchantAccount +
+    emvBrowser("52", "0000") +
+    emvBrowser("53", "986") +
+    (amountStr && Number(amountStr) > 0 ? emvBrowser("54", amountStr) : "") +
+    emvBrowser("58", "BR") +
+    emvBrowser("59", holder) +
+    emvBrowser("60", city) +
+    emvBrowser("62", emvBrowser("05", String(txId).slice(0,25).replace(/[^A-Za-z0-9]/g,"").slice(0,25) || "***")) +
+    "6304";
+  const crc = crc16Browser(payloadWithoutCRC);
+  return payloadWithoutCRC + crc;
+}
+function generateMockPixBrowser({ id, total, pixKey, pixKeyType, pixHolder, pixCity }) {
   const amount = Number(total).toFixed(2);
-  const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
-  const pixCode = buildPixPayloadBrowser({ pixKey: pixKey||"5548988452532", pixHolder, pixCity, amount, txId });
+  const txId = `BOKA${String(id).slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`.slice(0,25);
+  const pixCode = buildPixPayloadBrowser({ pixKey: pixKey||"5548988452532", pixKeyType: pixKeyType||"phone", pixHolder, pixCity, amount, txId });
   const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
   return { pixCode, pixQr, pixTxId: txId };
 }
@@ -448,9 +488,9 @@ export async function sqlCreateOrder({ customerName, customerPhone, customerAddr
   let status = pm === "pix" ? "pending_pix" : "pending";
   let pixCode = null, pixQr = null, pixTxId = null;
   if (pm === "pix") {
-    let pixConf = { pixKey:"5548988452532", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
+    let pixConf = { pixKey:"5548988452532", pixKeyType:"phone", pixHolder:"Boka Loka Lanches", pixCity:"Tubarao" };
     try { const s = await sqlGetSettings(); if (s?.pixKey) pixConf = s; } catch {}
-    const mock = generateMockPixBrowser({ id, total, pixKey: pixConf.pixKey, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
+    const mock = generateMockPixBrowser({ id, total, pixKey: pixConf.pixKey, pixKeyType: pixConf.pixKeyType, pixHolder: pixConf.pixHolder, pixCity: pixConf.pixCity });
     pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
   }
   db.run("INSERT INTO orders (id, customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod, status, pixCode, pixQr, pixTxId, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
