@@ -385,13 +385,13 @@ export async function createOrder(payload) {
       var keyTmp = String(pixConf.pixKey||"").trim();
       if (keyTypeTmp==="phone"){ var dTmp=keyTmp.replace(/\D/g,""); keyTmp=dTmp.startsWith("55")?`+${dTmp}`:`+55${dTmp}`; }
       else if (keyTypeTmp==="cpf"||keyTypeTmp==="cnpj"){ keyTmp=keyTmp.replace(/\D/g,""); } else { keyTmp=keyTmp.trim(); }
-      var holderTmp = String(pixConf.pixHolder||"Boka Loka Lanches").slice(0,25);
-      var cityTmp = String(pixConf.pixCity||"Tubarao").slice(0,15);
+      var holderTmp = String(pixConf.pixHolder||"Boka Loka Lanches").slice(0,25).toUpperCase();
+      var cityTmp = String(pixConf.pixCity||"Tubarao").slice(0,15).toUpperCase();
       var guiTmp = emvFunc("00","BR.GOV.BCB.PIX");
       var keyFieldTmp = emvFunc("01", keyTmp);
       var merchantAccountTmp = emvFunc("26", guiTmp + keyFieldTmp);
       var amountEmvTmp = Number(amount)>0 ? emvFunc("54", amount) : "";
-      var payloadTmp = emvFunc("00","01")+emvFunc("01","12")+merchantAccountTmp+emvFunc("52","0000")+emvFunc("53","986")+amountEmvTmp+emvFunc("58","BR")+emvFunc("59",holderTmp)+emvFunc("60",cityTmp)+emvFunc("62",emvFunc("05",txId.replace(/[^A-Za-z0-9]/g,"").slice(0,25)||"***"))+"6304";
+      var payloadTmp = emvFunc("00","01")+emvFunc("01","11")+merchantAccountTmp+emvFunc("52","0000")+emvFunc("53","986")+amountEmvTmp+emvFunc("58","BR")+emvFunc("59",holderTmp)+emvFunc("60",cityTmp)+emvFunc("62",emvFunc("05",txId.replace(/[^A-Za-z0-9]/g,"").slice(0,25)||"***"))+"6304";
       pixCode = payloadTmp + crc16Func(payloadTmp);
       pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
       pixTxId = txId;

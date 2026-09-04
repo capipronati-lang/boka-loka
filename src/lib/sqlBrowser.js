@@ -465,14 +465,14 @@ function buildPixPayloadBrowser({ pixKey, pixKeyType, pixHolder, pixCity, amount
   var merchantAccount = emvBrowser("26", gui + keyField);
   var payloadWithoutCRC =
     emvBrowser("00", "01") +
-    emvBrowser("01", "12") +
+    emvBrowser("01", "11") +
     merchantAccount +
     emvBrowser("52", "0000") +
     emvBrowser("53", "986") +
     (amountStr && Number(amountStr) > 0 ? emvBrowser("54", amountStr) : "") +
     emvBrowser("58", "BR") +
-    emvBrowser("59", holder) +
-    emvBrowser("60", city) +
+    emvBrowser("59", holder.toUpperCase()) +
+    emvBrowser("60", city.toUpperCase()) +
     emvBrowser("62", emvBrowser("05", String(txId).slice(0,25).replace(/[^A-Za-z0-9]/g,"").slice(0,25) || "***")) +
     "6304";
   var crc = crc16Browser(payloadWithoutCRC);

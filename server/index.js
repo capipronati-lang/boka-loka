@@ -463,14 +463,14 @@ function buildPixPayload({ pixKey, pixKeyType, pixHolder, pixCity, amount, txId 
   var merchantAccount = emv("26", gui + keyField);
   var payloadWithoutCRC =
     emv("00", "01") +
-    emv("01", "12") +
+    emv("01", "11") +
     merchantAccount +
     emv("52", "0000") +
     emv("53", "986") +
     (amountStr && Number(amountStr) > 0 ? emv("54", amountStr) : "") +
     emv("58", "BR") +
-    emv("59", holder) +
-    emv("60", city) +
+    emv("59", holder.toUpperCase()) +
+    emv("60", city.toUpperCase()) +
     emv("62", emv("05", String(txId).slice(0,25).replace(/[^A-Za-z0-9]/g,"").slice(0,25) || "***")) +
     "6304";
   var crc = crc16(payloadWithoutCRC);
