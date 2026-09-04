@@ -683,16 +683,16 @@ function ConfigTab({ settings, setSettings, showToast }) {
           <label className="space-y-1">
             <span className="text-xs font-black">Banco da chave Pix — qualquer banco funciona (DICT)</span>
             <select value={form.pixBank || "Inter"} onChange={e=>setForm({...form, pixBank: e.target.value})} className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900">
-              <option value="Inter">Inter - 0% Pix PJ</option>
-              <option value="Nubank">Nubank - 0% Pix PJ</option>
+              <option value="Inter">Inter (PF e PJ - 0% Pix)</option>
+              <option value="Nubank">Nubank (PF e PJ - 0% Pix)</option>
               <option value="Banco do Brasil">Banco do Brasil</option>
               <option value="Bradesco">Bradesco</option>
               <option value="Itaú">Itaú</option>
               <option value="Santander">Santander</option>
               <option value="Caixa">Caixa Econômica</option>
-              <option value="C6 Bank">C6 Bank</option>
-              <option value="Neon">Neon</option>
-              <option value="Next">Next</option>
+              <option value="C6 Bank">C6 Bank (PF 0%)</option>
+              <option value="Neon">Neon (PF 0%)</option>
+              <option value="Next">Next (PF 0%)</option>
               <option value="PicPay">PicPay</option>
               <option value="Mercado Pago">Mercado Pago</option>
               <option value="PagBank">PagBank</option>
@@ -703,10 +703,9 @@ function ConfigTab({ settings, setSettings, showToast }) {
               <option value="BTG Pactual">BTG Pactual</option>
               <option value="Original">Original</option>
               <option value="Safra">Safra</option>
-              <option value="Sicoob">Sicoob</option>
-              <option value="Outros">Outros (qualquer banco)</option>
+              <option value="Outros">Outros (qualquer banco - PF 0%)</option>
             </select>
-            <span className="text-[11px] text-zinc-500">Pix é DICT centralizado, funciona em qualquer banco onde a chave estiver cadastrada. Escolha onde sua chave está registrada.</span>
+            <span className="text-[11px] text-zinc-500">Pix PF é <b>0% em qualquer banco</b> (Inter/Nubank PF grátis). PJ: Inter/Nubank também 0% até limite. QR funciona em qualquer banco onde a chave estiver cadastrada (DICT).</span>
           </label>
           <div className="rounded-xl bg-white p-3 ring-1 ring-zinc-200 flex items-center gap-3">
             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`PIX:${form.pixKey||""}|${form.pixHolder||""}|${form.pixBank||""}`)}`} alt="previa QR" className="h-16 w-16 rounded-lg ring-1 ring-zinc-200" onError={(e)=>{e.currentTarget.style.display='none'}} />
