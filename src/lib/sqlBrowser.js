@@ -519,6 +519,10 @@ export async function sqlUpdateOrderStatus(id, status) {
   if (!allowed.includes(status)) throw new Error("Status inválido");
   const order = await sqlGetOrder(id);
   if (!order) throw new Error("Pedido não encontrado");
+  if (order.paymentMethod==="pix") {
+    if (status==="paid" && order.status==="pending_pix") throw new Error("PIX ainda não pago. Use Verificar PIX antes.");
+    if (status==="confirmed" && order.status!=="paid" && order.status!=="confirmed") throw new Error("PIX não verificado. Só confirme após pago.");
+  }
   const now = new Date().toISOString();
   let paidAt = order.paidAt, confirmedAt = order.confirmedAt;
   if (status==="paid" && !paidAt) paidAt = now;

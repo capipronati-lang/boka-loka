@@ -462,10 +462,18 @@ export async function updateOrderStatus(id, status) {
       if (idx>=0) { local[idx]=browserRes; saveOrdersLocal(local); } else { local.unshift(browserRes); saveOrdersLocal(local); }
       return browserRes;
     }
-  } catch {}
+  } catch (e) {
+    // se erro veio do sqlBrowser (validação PIX), propaga
+    if (e && e.message && e.message.includes("PIX")) throw e;
+  }
   const local = getOrdersLocal();
   const idx = local.findIndex(o=>o.id===id);
   if (idx>=0) {
+    const order = local[idx];
+    if (order.paymentMethod==="pix") {
+      if (status==="paid" && order.status==="pending_pix") throw new Error("PIX ainda não pago. Use Verificar PIX antes.");
+      if (status==="confirmed" && order.status!=="paid" && order.status!=="confirmed") throw new Error("PIX não verificado. Só confirme após pago.");
+    }
     local[idx].status = status;
     if (status==="paid" && !local[idx].paidAt) local[idx].paidAt = new Date().toISOString();
     if (status==="confirmed" && !local[idx].confirmedAt) local[idx].confirmedAt = new Date().toISOString();

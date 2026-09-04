@@ -48,9 +48,16 @@ export default function AdminPanel() {
   const [trash, setTrash] = useState({ products: [], productsLast30: [], admins: [], discounts: [], accounts: [] });
   const [toast, setToast] = useState(null);
 
+  const loadTrash = async () => {
+    try { const data = await getTrash(); if (data) setTrash({ products: data.products || [], productsLast30: data.productsLast30 || data.products || [], admins: data.admins || [], discounts: data.discounts || [], accounts: data.accounts || [] }); } catch {}
+  };
+  const loadOrders = async () => {
+    try { const data = await fetchOrdersFromSql(); if (data) setOrders(data); else setOrders(getOrdersLocal()); } catch { try { setOrders(getOrdersLocal()); } catch {} }
+  };
+
   // keep in sync with localStorage events from other tabs
   useEffect(() => {
-    const h = () => {
+    const syncHandler = () => {
       setProducts(getProducts());
       setSettings(getSettings());
       setAdmins(getAdmins());
@@ -59,23 +66,23 @@ export default function AdminPanel() {
       try { setOrders(getOrdersLocal()); } catch {}
       loadTrash();
     };
-    window.addEventListener("boka:products", h);
-    window.addEventListener("boka:settings", h);
-    window.addEventListener("boka:admins", h);
-    window.addEventListener("boka:discounts", h);
-    window.addEventListener("boka:accounts", h);
-    window.addEventListener("boka:orders", h);
-    window.addEventListener("boka:deleted_history", h);
-    window.addEventListener("storage", h);
+    window.addEventListener("boka:products", syncHandler);
+    window.addEventListener("boka:settings", syncHandler);
+    window.addEventListener("boka:admins", syncHandler);
+    window.addEventListener("boka:discounts", syncHandler);
+    window.addEventListener("boka:accounts", syncHandler);
+    window.addEventListener("boka:orders", syncHandler);
+    window.addEventListener("boka:deleted_history", syncHandler);
+    window.addEventListener("storage", syncHandler);
     return () => {
-      window.removeEventListener("boka:products", h);
-      window.removeEventListener("boka:settings", h);
-      window.removeEventListener("boka:admins", h);
-      window.removeEventListener("boka:discounts", h);
-      window.removeEventListener("boka:accounts", h);
-      window.removeEventListener("boka:orders", h);
-      window.removeEventListener("boka:deleted_history", h);
-      window.removeEventListener("storage", h);
+      window.removeEventListener("boka:products", syncHandler);
+      window.removeEventListener("boka:settings", syncHandler);
+      window.removeEventListener("boka:admins", syncHandler);
+      window.removeEventListener("boka:discounts", syncHandler);
+      window.removeEventListener("boka:accounts", syncHandler);
+      window.removeEventListener("boka:orders", syncHandler);
+      window.removeEventListener("boka:deleted_history", syncHandler);
+      window.removeEventListener("storage", syncHandler);
     };
   }, []);
   // hidrata do SQL se /api estiver vivo
@@ -89,12 +96,6 @@ export default function AdminPanel() {
       m.fetchOrdersFromSql().then(d=> d && setOrders(d)).catch(()=>{});
     });
   }, []);
-  const loadTrash = async () => {
-    try { const data = await getTrash(); if (data) setTrash({ products: data.products || [], productsLast30: data.productsLast30 || data.products || [], admins: data.admins || [], discounts: data.discounts || [], accounts: data.accounts || [] }); } catch {}
-  };
-  const loadOrders = async () => {
-    try { const data = await fetchOrdersFromSql(); if (data) setOrders(data); else setOrders(getOrdersLocal()); } catch { try { setOrders(getOrdersLocal()); } catch {} }
-  };
   useEffect(() => { loadOrders(); }, []);
   useEffect(() => { if (tab === "pedidos") loadOrders(); }, [tab]);
 

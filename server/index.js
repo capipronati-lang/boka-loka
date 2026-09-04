@@ -614,6 +614,15 @@ app.put("/api/orders/:id/status", async (req, res) => {
   if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido" });
   const row = await db.get("SELECT * FROM orders WHERE id=?", req.params.id);
   if (!row) return res.status(404).json({ error: "Pedido não encontrado" });
+  // proteção dinheiro real: PIX não pode ser confirmado sem pagamento verificado
+  if (row.paymentMethod === "pix") {
+    if (status === "paid" && row.status === "pending_pix") {
+      return res.status(400).json({ error: "PIX ainda não pago. Use Verificar PIX antes. Para teste use ?forcePaid=true via /verify-pix" });
+    }
+    if (status === "confirmed" && row.status !== "paid" && row.status !== "confirmed") {
+      return res.status(400).json({ error: "PIX não verificado. Só confirme após status paid. Use Verificar PIX." });
+    }
+  }
   const now = new Date().toISOString();
   let paidAt = row.paidAt, confirmedAt = row.confirmedAt;
   if (status === "paid" && !paidAt) paidAt = now;
