@@ -8,6 +8,7 @@ const KEYS = {
   ADMINS: "boka_admins",
   DISCOUNTS: "boka_discounts",
   ACCOUNTS: "boka_accounts",
+  ORDERS: "boka_orders",
   SESSION: "boka_admin_session",
   DELETED_HISTORY: "boka_deleted_products_history",
 };
@@ -317,6 +318,150 @@ export async function fetchDiscountsFromSql() {
   return null;
 }
 
+// ORDERS - pedidos com pagamento
+export function getOrdersLocal() {
+  const raw = localStorage.getItem(KEYS.ORDERS);
+  if (!raw) return [];
+  const parsed = safeParse(raw, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+export function saveOrdersLocal(orders) {
+  try { localStorage.setItem(KEYS.ORDERS, JSON.stringify(orders)); window.dispatchEvent(new Event("boka:orders")); } catch {}
+}
+export async function fetchOrdersFromSql() {
+  const data = await apiGet("/orders");
+  if (Array.isArray(data)) {
+    try { localStorage.setItem(KEYS.ORDERS, JSON.stringify(data)); window.dispatchEvent(new Event("boka:orders")); } catch {}
+    return data;
+  }
+  try {
+    const browser = await sqlBrowser.sqlGetOrders();
+    if (Array.isArray(browser) && browser.length) {
+      try { localStorage.setItem(KEYS.ORDERS, JSON.stringify(browser)); window.dispatchEvent(new Event("boka:orders")); } catch {}
+      return browser;
+    }
+  } catch {}
+  // fallback localStorage puro
+  const local = getOrdersLocal();
+  if (local.length) return local;
+  return [];
+}
+export async function createOrder(payload) {
+  // tenta API
+  const apiRes = await apiSend("/orders", "POST", payload);
+  if (apiRes && apiRes.id) {
+    // sincroniza local
+    const local = getOrdersLocal();
+    local.unshift(apiRes);
+    saveOrdersLocal(local);
+    try { await sqlBrowser.sqlCreateOrder(payload).catch(()=>{}); } catch {}
+    return apiRes;
+  }
+  // fallback sqlBrowser (100% gratuito)
+  try {
+    const browserRes = await sqlBrowser.sqlCreateOrder(payload);
+    if (browserRes && browserRes.id) {
+      const local = getOrdersLocal();
+      local.unshift(browserRes);
+      saveOrdersLocal(local);
+      return browserRes;
+    }
+  } catch (e) { console.warn("sqlCreateOrder falhou", e); }
+  // último fallback: só localStorage (gera mock pix local)
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6).toUpperCase();
+  const now = new Date().toISOString();
+  const pm = (payload.paymentMethod||"pix").toLowerCase();
+  let pixCode=null, pixQr=null, pixTxId=null, status = pm==="pix" ? "pending_pix" : "pending";
+  if (pm==="pix") {
+    const amount = Number(payload.total).toFixed(2);
+    const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+    pixCode = `00020126360014BR.GOV.BCB.PIX0114+5548988452532${amount}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
+    pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
+    pixTxId = txId;
+  }
+  const order = {
+    id, customerName: payload.customerName, customerPhone: payload.customerPhone, customerAddress: payload.customerAddress||"",
+    customerCpf: (payload.customerCpf||"").replace(/\D/g,""), items: payload.items, total: Number(payload.total),
+    paymentMethod: pm, status, pixCode, pixQr, pixTxId, createdAt: now, paidAt: null, confirmedAt: null,
+  };
+  const local = getOrdersLocal();
+  local.unshift(order);
+  saveOrdersLocal(local);
+  return order;
+}
+export async function verifyPixOrder(id, forcePaid=false) {
+  // tenta API
+  const apiRes = await apiSend(`/orders/${id}/verify-pix${forcePaid ? "?forcePaid=true" : ""}`, "POST", forcePaid? { forcePaid: true } : undefined);
+  if (apiRes && apiRes.id !== undefined) {
+    // atualiza local
+    const local = getOrdersLocal();
+    const idx = local.findIndex(o=>o.id===id);
+    if (idx>=0) { local[idx] = { ...local[idx], ...apiRes }; saveOrdersLocal(local); }
+    // também tenta atualizar sqlBrowser se API não atualizou browser
+    try { if (forcePaid) await sqlBrowser.sqlVerifyPix(id, true); } catch {}
+    return apiRes;
+  }
+  // fallback sqlBrowser
+  try {
+    const browserRes = await sqlBrowser.sqlVerifyPix(id, forcePaid);
+    if (browserRes) {
+      const local = getOrdersLocal();
+      const idx = local.findIndex(o=>o.id===id);
+      if (idx>=0) { local[idx] = { ...local[idx], ...browserRes }; saveOrdersLocal(local); } else { local.unshift(browserRes); saveOrdersLocal(local); }
+      return browserRes;
+    }
+  } catch {}
+  // fallback localStorage
+  const local = getOrdersLocal();
+  const idx = local.findIndex(o=>o.id===id);
+  if (idx>=0) {
+    const order = local[idx];
+    if (forcePaid && order.paymentMethod==="pix" && order.status!=="paid" && order.status!=="confirmed") {
+      order.status = "paid"; order.paidAt = new Date().toISOString();
+      local[idx]=order; saveOrdersLocal(local);
+      return { ...order, verified:true };
+    }
+    return { ...order, verified: order.status==="paid"||order.status==="confirmed" };
+  }
+  return null;
+}
+export async function updateOrderStatus(id, status) {
+  const apiRes = await apiSend(`/orders/${id}/status`, "PUT", { status });
+  if (apiRes && apiRes.id) {
+    const local = getOrdersLocal();
+    const idx = local.findIndex(o=>o.id===id);
+    if (idx>=0) { local[idx]=apiRes; saveOrdersLocal(local); }
+    try { await sqlBrowser.sqlUpdateOrderStatus(id, status); } catch {}
+    return apiRes;
+  }
+  try {
+    const browserRes = await sqlBrowser.sqlUpdateOrderStatus(id, status);
+    if (browserRes) {
+      const local = getOrdersLocal();
+      const idx = local.findIndex(o=>o.id===id);
+      if (idx>=0) { local[idx]=browserRes; saveOrdersLocal(local); } else { local.unshift(browserRes); saveOrdersLocal(local); }
+      return browserRes;
+    }
+  } catch {}
+  const local = getOrdersLocal();
+  const idx = local.findIndex(o=>o.id===id);
+  if (idx>=0) {
+    local[idx].status = status;
+    if (status==="paid" && !local[idx].paidAt) local[idx].paidAt = new Date().toISOString();
+    if (status==="confirmed" && !local[idx].confirmedAt) local[idx].confirmedAt = new Date().toISOString();
+    saveOrdersLocal(local);
+    return local[idx];
+  }
+  return null;
+}
+export async function getOrderById(id) {
+  const apiRes = await apiGet(`/orders/${id}`);
+  if (apiRes && apiRes.id) return apiRes;
+  try { const b = await sqlBrowser.sqlGetOrder(id); if (b) return b; } catch {}
+  const local = getOrdersLocal();
+  return local.find(o=>o.id===id) || null;
+}
+
 // SESSION
 export function getSession() {
   const raw = localStorage.getItem(KEYS.SESSION);
@@ -383,6 +528,7 @@ export async function hydrateFromSql() {
       fetchAdminsFromSql(),
       fetchDiscountsFromSql(),
       fetchAccountsFromSql(),
+      fetchOrdersFromSql().catch(()=>{}),
     ]);
   } catch {}
 }

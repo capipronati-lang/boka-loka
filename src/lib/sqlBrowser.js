@@ -94,6 +94,24 @@ async function getDb() {
       password TEXT,
       createdAt TEXT
     );
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      customerName TEXT,
+      customerPhone TEXT,
+      customerAddress TEXT,
+      customerCpf TEXT,
+      items TEXT NOT NULL,
+      total REAL NOT NULL,
+      paymentMethod TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      pixCode TEXT,
+      pixQr TEXT,
+      pixTxId TEXT,
+      mpPaymentId TEXT,
+      createdAt TEXT NOT NULL,
+      paidAt TEXT,
+      confirmedAt TEXT
+    );
   `);
   // migração lixeira
   for (const tbl of ["products","admins","discounts","accounts"]) {
@@ -363,6 +381,82 @@ export async function sqlRemoveAccount(id) {
   const db = await getDb();
   db.run("UPDATE accounts SET deleted=1, deletedAt=? WHERE id=?", [new Date().toISOString(), id]);
   saveDb();
+}
+
+export async function sqlGetOrders() {
+  const db = await getDb();
+  const res = db.exec("SELECT * FROM orders ORDER BY datetime(createdAt) DESC");
+  if (!res[0]) return [];
+  return res[0].values.map(r => ({
+    id: r[0], customerName: r[1], customerPhone: r[2], customerAddress: r[3], customerCpf: r[4],
+    items: (()=>{ try { return JSON.parse(r[5]); } catch { return []; } })(),
+    total: Number(r[6]), paymentMethod: r[7], status: r[8],
+    pixCode: r[9], pixQr: r[10], pixTxId: r[11], mpPaymentId: r[12],
+    createdAt: r[13], paidAt: r[14], confirmedAt: r[15],
+  }));
+}
+export async function sqlGetOrder(id) {
+  const db = await getDb();
+  const stmt = db.prepare("SELECT * FROM orders WHERE id=?");
+  const row = stmt.getAsObject([id]);
+  stmt.free();
+  if (!row || !row.id) return null;
+  try { row.items = JSON.parse(row.items); } catch { row.items = []; }
+  row.total = Number(row.total);
+  return row;
+}
+function generateMockPixBrowser({ id, total }) {
+  const amount = Number(total).toFixed(2);
+  const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  const pixKey = "48988452532";
+  const pixCode = `00020126360014BR.GOV.BCB.PIX0114+55${pixKey}520400005303986540${amount.padStart(5,"0")}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
+  const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
+  return { pixCode, pixQr, pixTxId: txId };
+}
+export async function sqlCreateOrder({ customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod }) {
+  const db = await getDb();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6).toUpperCase();
+  const now = new Date().toISOString();
+  const pm = (paymentMethod || "pix").toLowerCase();
+  let status = pm === "pix" ? "pending_pix" : "pending";
+  let pixCode = null, pixQr = null, pixTxId = null;
+  if (pm === "pix") {
+    const mock = generateMockPixBrowser({ id, total });
+    pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
+  }
+  db.run("INSERT INTO orders (id, customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod, status, pixCode, pixQr, pixTxId, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    [id, customerName, customerPhone, customerAddress||"", (customerCpf||"").replace(/\D/g,""), JSON.stringify(items), Number(total), pm, status, pixCode, pixQr, pixTxId, now]);
+  saveDb();
+  return await sqlGetOrder(id);
+}
+export async function sqlVerifyPix(id, forcePaid) {
+  const db = await getDb();
+  const order = await sqlGetOrder(id);
+  if (!order) throw new Error("Pedido não encontrado");
+  if (order.paymentMethod !== "pix") return { ...order, verified: order.status==="paid"||order.status==="confirmed" };
+  if (order.status==="paid"||order.status==="confirmed") return { ...order, verified:true };
+  if (forcePaid) {
+    const paidAt = new Date().toISOString();
+    db.run("UPDATE orders SET status='paid', paidAt=? WHERE id=?", [paidAt, id]);
+    saveDb();
+    const updated = await sqlGetOrder(id);
+    return { ...updated, verified:true };
+  }
+  return { ...order, verified:false };
+}
+export async function sqlUpdateOrderStatus(id, status) {
+  const db = await getDb();
+  const allowed = ["pending","pending_pix","paid","confirmed","cancelled","failed"];
+  if (!allowed.includes(status)) throw new Error("Status inválido");
+  const order = await sqlGetOrder(id);
+  if (!order) throw new Error("Pedido não encontrado");
+  const now = new Date().toISOString();
+  let paidAt = order.paidAt, confirmedAt = order.confirmedAt;
+  if (status==="paid" && !paidAt) paidAt = now;
+  if (status==="confirmed" && !confirmedAt) { confirmedAt = now; if (!paidAt && order.paymentMethod==="pix") paidAt = now; }
+  db.run("UPDATE orders SET status=?, paidAt=?, confirmedAt=? WHERE id=?", [status, paidAt, confirmedAt, id]);
+  saveDb();
+  return await sqlGetOrder(id);
 }
 
 export async function sqlReset() {

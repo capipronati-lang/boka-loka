@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, saveProducts, softDeleteProduct, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount, getTrash, restoreTrash, hardDeleteTrash, clearTrash, restoreProduct, purgeExpiredProducts } from "../lib/adminStore";
-import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User, ArchiveRestore, Trash, History, Clock, Calendar, AlertTriangle, Eye } from "lucide-react";
+import { getProducts, saveProducts, softDeleteProduct, getSettings, saveSettings, getAdmins, addAdmin, removeAdmin, getDiscounts, saveDiscounts, clearSession, getSession, getAccounts, addAccount, updateAccount, removeAccount, getTrash, restoreTrash, hardDeleteTrash, clearTrash, restoreProduct, purgeExpiredProducts, getOrdersLocal, fetchOrdersFromSql, updateOrderStatus, verifyPixOrder } from "../lib/adminStore";
+import { LogOut, Plus, Trash2, Pencil, Save, Image as ImageIcon, Percent, MapPin, Phone, Link2, ShoppingBag, Shield, Settings, Users, Gift, Upload, User, ArchiveRestore, Trash, History, Clock, Calendar, AlertTriangle, Eye, Package, CreditCard, Banknote, QrCode, CheckCircle, RefreshCw } from "lucide-react";
 import AdminLogin from "./AdminLogin";
 
 function fileToDataUrl(file) {
@@ -44,6 +44,7 @@ export default function AdminPanel() {
   const [admins, setAdmins] = useState(() => getAdmins());
   const [discounts, setDiscounts] = useState(() => getDiscounts());
   const [accounts, setAccounts] = useState(() => { try { return getAccounts(); } catch { return []; } });
+  const [orders, setOrders] = useState(() => { try { return getOrdersLocal(); } catch { return []; } });
   const [trash, setTrash] = useState({ products: [], productsLast30: [], admins: [], discounts: [], accounts: [] });
   const [toast, setToast] = useState(null);
 
@@ -55,6 +56,7 @@ export default function AdminPanel() {
       setAdmins(getAdmins());
       setDiscounts(getDiscounts());
       try { setAccounts(getAccounts()); } catch {}
+      try { setOrders(getOrdersLocal()); } catch {}
       loadTrash();
     };
     window.addEventListener("boka:products", h);
@@ -62,6 +64,7 @@ export default function AdminPanel() {
     window.addEventListener("boka:admins", h);
     window.addEventListener("boka:discounts", h);
     window.addEventListener("boka:accounts", h);
+    window.addEventListener("boka:orders", h);
     window.addEventListener("boka:deleted_history", h);
     window.addEventListener("storage", h);
     return () => {
@@ -70,6 +73,7 @@ export default function AdminPanel() {
       window.removeEventListener("boka:admins", h);
       window.removeEventListener("boka:discounts", h);
       window.removeEventListener("boka:accounts", h);
+      window.removeEventListener("boka:orders", h);
       window.removeEventListener("boka:deleted_history", h);
       window.removeEventListener("storage", h);
     };
@@ -82,13 +86,17 @@ export default function AdminPanel() {
       m.fetchAdminsFromSql().then(d=> d && setAdmins(d)).catch(()=>{});
       m.fetchDiscountsFromSql().then(d=> d && setDiscounts(d)).catch(()=>{});
       m.fetchAccountsFromSql().then(d=> d && setAccounts(d)).catch(()=>{});
+      m.fetchOrdersFromSql().then(d=> d && setOrders(d)).catch(()=>{});
     });
   }, []);
   const loadTrash = async () => {
     try { const data = await getTrash(); if (data) setTrash({ products: data.products || [], productsLast30: data.productsLast30 || data.products || [], admins: data.admins || [], discounts: data.discounts || [], accounts: data.accounts || [] }); } catch {}
   };
-  useEffect(() => { loadTrash(); }, []);
-  useEffect(() => { if (tab === "lixeira" || tab === "historico") loadTrash(); }, [tab]);
+  const loadOrders = async () => {
+    try { const data = await fetchOrdersFromSql(); if (data) setOrders(data); else setOrders(getOrdersLocal()); } catch { try { setOrders(getOrdersLocal()); } catch {} }
+  };
+  useEffect(() => { loadOrders(); }, []);
+  useEffect(() => { if (tab === "pedidos") loadOrders(); }, [tab]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -101,6 +109,8 @@ export default function AdminPanel() {
 
   const historicoCount = trash.productsLast30?.length ?? 0;
   const lixeiraTotal = (trash.products?.length || 0) + (trash.admins?.length || 0) + (trash.discounts?.length || 0) + (trash.accounts?.length || 0);
+  const pedidosPendentes = orders.filter(o=> o.status==="pending" || o.status==="pending_pix").length;
+  const pedidosPagos = orders.filter(o=> o.status==="paid").length;
 
   return (
     <div className="min-h-screen bg-[#fffbf0] text-zinc-900">
@@ -124,6 +134,7 @@ export default function AdminPanel() {
           <div className="flex gap-1 overflow-x-auto py-2 scrollbar-thin">
             {[
               { id: "produtos", label: "Produtos", icon: ShoppingBag },
+              { id: "pedidos", label: "Pedidos", icon: Package, badge: pedidosPendentes },
               { id: "historico", label: `Histórico`, icon: History, badge: historicoCount },
               { id: "descontos", label: "Descontos", icon: Percent },
               { id: "config", label: "Loja", icon: Settings },
@@ -132,7 +143,7 @@ export default function AdminPanel() {
               { id: "contas", label: "Contas", icon: User },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab===t.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
-                <t.icon className="h-4 w-4" /> {t.label} {t.badge > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab===t.id ? "bg-white text-zinc-900" : "bg-amber-400 text-zinc-900"}`}>{t.badge}</span>}
+                <t.icon className="h-4 w-4" /> {t.label} {t.badge > 0 && <span className={`rounded-full px-2 py-0.5 text-xs ${tab===t.id ? "bg-white text-zinc-900" : t.id==="pedidos"?"bg-emerald-500 text-white":"bg-amber-400 text-zinc-900"}`}>{t.badge}</span>}
               </button>
             ))}
             <button onClick={() => setTab("lixeira")} className={`ml-2 inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ring-1 transition ${tab==="lixeira" ? "bg-red-600 text-white ring-red-600" : "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"}`}>
@@ -145,6 +156,7 @@ export default function AdminPanel() {
 
       <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6">
         {tab === "produtos" && <ProdutosTab products={products} setProducts={setProducts} showToast={showToast} loadTrash={loadTrash} trash={trash} setTab={setTab} />}
+        {tab === "pedidos" && <PedidosTab orders={orders} setOrders={setOrders} showToast={showToast} loadOrders={loadOrders} />}
         {tab === "historico" && <HistoricoProdutosTab trash={trash} loadTrash={loadTrash} setProducts={setProducts} showToast={showToast} />}
         {tab === "descontos" && <DescontosTab products={products} discounts={discounts} setDiscounts={setDiscounts} showToast={showToast} loadTrash={loadTrash} />}
         {tab === "config" && <ConfigTab settings={settings} setSettings={setSettings} showToast={showToast} />}
@@ -852,6 +864,168 @@ function ContasTab({ accounts, setAccounts, showToast, loadTrash }) {
           </div>
         ))}
         {accounts.length===0 && <div className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-500 ring-1 ring-zinc-200">Nenhuma conta. Adicione a primeira.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Pedidos (pagamentos direto no site) ----------------
+function PedidosTab({ orders, setOrders, showToast, loadOrders }) {
+  const [filterStatus, setFilterStatus] = useState("todos");
+  const [filterPay, setFilterPay] = useState("todos");
+  const [expanded, setExpanded] = useState(null);
+  useEffect(()=>{ loadOrders?.(); const id=setInterval(()=> loadOrders?.(), 8000); return ()=> clearInterval(id); }, []);
+  const filtered = useMemo(()=> {
+    return (orders||[]).filter(o=>{
+      const sOk = filterStatus==="todos" || o.status===filterStatus;
+      const pOk = filterPay==="todos" || o.paymentMethod===filterPay;
+      return sOk && pOk;
+    });
+  }, [orders, filterStatus, filterPay]);
+  const stats = useMemo(()=>{
+    const total = orders.length;
+    const pending = orders.filter(o=>o.status==="pending"||o.status==="pending_pix").length;
+    const paid = orders.filter(o=>o.status==="paid").length;
+    const confirmed = orders.filter(o=>o.status==="confirmed").length;
+    const cancelled = orders.filter(o=>o.status==="cancelled").length;
+    const pix = orders.filter(o=>o.paymentMethod==="pix").length;
+    const totalPix = orders.filter(o=>o.paymentMethod==="pix").reduce((s,o)=>s+Number(o.total||0),0);
+    return { total, pending, paid, confirmed, cancelled, pix, totalPix };
+  }, [orders]);
+  const handleVerify = async (id, force=false) => {
+    try {
+      const res = await verifyPixOrder(id, force);
+      if (res?.verified || res?.status==="paid" || res?.status==="confirmed") {
+        showToast(force ? "✅ PIX confirmado manualmente" : "✅ PIX verificado — pago");
+        loadOrders();
+      } else {
+        showToast(res?.message || "PIX ainda não pago");
+        loadOrders();
+      }
+    } catch(e){ showToast(e.message); }
+  };
+  const handleStatus = async (id, status) => {
+    if (!confirm(`Alterar pedido #${id.slice(0,6).toUpperCase()} para ${status.toUpperCase()}?`)) return;
+    try { await updateOrderStatus(id, status); showToast(`Pedido ${status}`); loadOrders(); } catch(e){ showToast(e.message); }
+  };
+  const statusBadge = (s) => {
+    const map = {
+      pending: "bg-amber-100 text-amber-800 ring-amber-200",
+      pending_pix: "bg-orange-100 text-orange-800 ring-orange-200",
+      paid: "bg-emerald-100 text-emerald-700 ring-emerald-200",
+      confirmed: "bg-emerald-600 text-white ring-emerald-600",
+      cancelled: "bg-red-100 text-red-700 ring-red-200",
+      failed: "bg-zinc-200 text-zinc-600 ring-zinc-300",
+    };
+    const label = { pending:"PENDENTE", pending_pix:"AGUARDANDO PIX", paid:"PAGO", confirmed:"CONFIRMADO", cancelled:"CANCELADO", failed:"FALHOU" }[s] || s.toUpperCase();
+    return <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${map[s]||"bg-zinc-100"}`}>{label}</span>;
+  };
+  const payBadge = (p) => {
+    const map = { pix:"bg-zinc-900 text-white", card:"bg-blue-600 text-white", money:"bg-emerald-600 text-white" };
+    const icon = p==="pix" ? QrCode : p==="card" ? CreditCard : Banknote;
+    const Icon = icon;
+    return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black ${map[p]||"bg-zinc-100"}`}><Icon className="h-3 w-3"/>{p.toUpperCase()}</span>;
+  };
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Package className="h-5 w-5 text-zinc-900" />
+          <h2 className="font-display text-[22px] font-black tracking-tight">Pedidos</h2>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold ring-1 ring-zinc-200">{stats.total} pedidos</span>
+          {stats.pending>0 && <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-black text-zinc-900">{stats.pending} pendentes</span>}
+          {stats.paid>0 && <span className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-black text-white">{stats.paid} pagos</span>}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={loadOrders} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black ring-1 ring-zinc-200 hover:bg-zinc-50"><RefreshCw className="h-4 w-4"/> Atualizar</button>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200"><div className="text-xs font-black text-zinc-500 flex items-center gap-1.5"><Package className="h-4 w-4"/> TOTAL</div><div className="text-2xl font-black">{stats.total}</div><div className="text-xs text-zinc-500">todos os pedidos</div></div>
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200"><div className="text-xs font-black text-zinc-500 flex items-center gap-1.5"><Clock className="h-4 w-4 text-amber-500"/> PENDENTES</div><div className="text-2xl font-black text-amber-600">{stats.pending}</div><div className="text-xs text-zinc-500">aguardando PIX/confirmação</div></div>
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200"><div className="text-xs font-black text-zinc-500 flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-emerald-500"/> PAGOS</div><div className="text-2xl font-black text-emerald-600">{stats.paid}</div><div className="text-xs text-zinc-500">PIX verificado</div></div>
+        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200"><div className="text-xs font-black text-zinc-500 flex items-center gap-1.5"><QrCode className="h-4 w-4"/> PIX</div><div className="text-2xl font-black">{stats.pix}</div><div className="text-xs text-zinc-500">R$ {stats.totalPix.toFixed(2).replace(".",",")} em PIX</div></div>
+      </div>
+
+      <div className="rounded-[20px] bg-white p-4 ring-1 ring-zinc-200">
+        <div className="flex flex-wrap gap-2">
+          <span className="text-xs font-black py-2">Status:</span>
+          {["todos","pending","pending_pix","paid","confirmed","cancelled"].map(s=> (
+            <button key={s} onClick={()=>setFilterStatus(s)} className={`rounded-full px-3 py-1.5 text-xs font-black ring-1 ${filterStatus===s?"bg-zinc-900 text-white ring-zinc-900":"bg-white text-zinc-600 ring-zinc-200"}`}>{s==="todos"?"Todos":s.toUpperCase()}</button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="text-xs font-black py-2">Pagamento:</span>
+          {["todos","pix","card","money"].map(p=> (
+            <button key={p} onClick={()=>setFilterPay(p)} className={`rounded-full px-3 py-1.5 text-xs font-black ring-1 ${filterPay===p?"bg-zinc-900 text-white ring-zinc-900":"bg-white text-zinc-600 ring-zinc-200"}`}>{p.toUpperCase()}</button>
+          ))}
+        </div>
+        <div className="mt-2 text-xs text-zinc-500">{filtered.length} pedido(s) filtrados • verificação PIX bloqueia confirmação até cair</div>
+      </div>
+
+      {filtered.length===0 ? (
+        <div className="rounded-[20px] bg-white p-10 text-center ring-1 ring-zinc-200">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-zinc-100 text-zinc-500"><Package className="h-6 w-6"/></div>
+          <div className="mt-3 font-black">Nenhum pedido ainda</div>
+          <div className="text-sm text-zinc-500">Quando clientes finalizarem via site, pedidos aparecerão aqui com forma de pagamento e status. PIX só confirma após verificação.</div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map(o=> (
+            <div key={o.id} className={`rounded-2xl bg-white p-4 ring-1 ${o.status==="pending_pix" ? "ring-orange-200 bg-orange-50/40" : o.status==="paid" ? "ring-emerald-200 bg-emerald-50/40" : o.status==="confirmed" ? "ring-emerald-300" : o.status==="cancelled" ? "ring-red-200 bg-red-50/40" : "ring-zinc-200"}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-black">#{o.id.slice(0,6).toUpperCase()}</span>
+                    <span className="text-xs text-zinc-500">{new Date(o.createdAt).toLocaleString("pt-BR")}</span>
+                    {payBadge(o.paymentMethod)}
+                    {statusBadge(o.status)}
+                  </div>
+                  <div className="mt-1 text-sm"><span className="font-black">{o.customerName}</span> • <span className="font-mono text-zinc-600">{o.customerPhone}</span></div>
+                  <div className="text-xs text-zinc-500 truncate max-w-[320px]">{o.customerAddress} {o.customerCpf ? `• CPF ${o.customerCpf}` : ""}</div>
+                  <div className="mt-1 text-sm font-black">R$ {Number(o.total).toFixed(2).replace(".",",")} • {o.items?.length || 0} itens</div>
+                  {o.paidAt && <div className="text-xs text-emerald-600 font-bold">Pago em {new Date(o.paidAt).toLocaleString("pt-BR")}</div>}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button onClick={()=> setExpanded(expanded===o.id?null:o.id)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black ring-1 ring-zinc-200 hover:bg-zinc-50"><Eye className="h-3 w-3 inline mr-1"/> {expanded===o.id?"Fechar":"Detalhes"}</button>
+                  {o.paymentMethod==="pix" && o.status==="pending_pix" && (
+                    <>
+                      <button onClick={()=>handleVerify(o.id,false)} className="rounded-full bg-[#25d366] px-3 py-1.5 text-xs font-black text-white hover:brightness-110"><QrCode className="h-3 w-3 inline mr-1"/> Verificar PIX</button>
+                      <button onClick={()=>handleVerify(o.id,true)} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-black text-white hover:bg-amber-600">Confirmar PIX (mock)</button>
+                    </>
+                  )}
+                  {o.status==="paid" && <button onClick={()=>handleStatus(o.id,"confirmed")} className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-700"><CheckCircle className="h-3 w-3 inline mr-1"/> Confirmar</button>}
+                  {(o.status==="pending"||o.status==="pending_pix") && o.paymentMethod!=="pix" && <button onClick={()=>handleStatus(o.id,"confirmed")} className="rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-black text-white">Confirmar</button>}
+                  {o.status!=="cancelled" && o.status!=="confirmed" && <button onClick={()=>handleStatus(o.id,"cancelled")} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-red-600 ring-1 ring-red-200 hover:bg-red-50">Cancelar</button>}
+                  {o.paymentMethod==="pix" && o.status==="paid" && <button onClick={()=>handleStatus(o.id,"confirmed")} className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white">Enviar p/ cozinha</button>}
+                </div>
+              </div>
+              {expanded===o.id && (
+                <div className="mt-4 space-y-3 border-t border-zinc-200 pt-3">
+                  <div className="grid gap-2">
+                    {(o.items||[]).map((it, idx)=> (
+                      <div key={idx} className="flex justify-between text-sm bg-zinc-50 p-2 rounded-xl ring-1 ring-zinc-200">
+                        <span>{it.qty}x {it.name} {it.extras?.length ? `+${it.extras.join(",")}` : ""} {it.removed?.length ? `-${it.removed.join(",")}` : ""} {it.observation ? `(${it.observation})` : ""}</span>
+                        <span className="font-bold">R$ {(Number(it.price||0)+Number(it.extrasPrice||0)).toFixed(2).replace(".",",")} un.</span>
+                      </div>
+                    ))}
+                  </div>
+                  {o.paymentMethod==="pix" && (
+                    <div className="rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                      <div className="text-xs font-black">PIX</div>
+                      <div className="mt-1 break-all font-mono text-xs">{o.pixCode}</div>
+                      {o.pixQr && <img src={o.pixQr} alt="QR" className="mt-2 h-32 w-32 rounded-lg ring-1 ring-zinc-200" />}
+                      <div className="mt-1 text-xs text-zinc-500">TX {o.pixTxId} {o.mpPaymentId ? `• MP ${o.mpPaymentId}` : "• mock"}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+        ℹ️ PIX só entra em <b>PAID</b> após verificação. Botão <b>Verificar PIX</b> consulta Mercado Pago (se <code>MP_ACCESS_TOKEN</code> configurado) ou mock. <b>Confirmar PIX (mock)</b> é para testes/demonstração quando não há gateway real. Em produção, configure <code>MP_ACCESS_TOKEN</code> e <code>PIX_KEY</code> no servidor.
       </div>
     </div>
   );

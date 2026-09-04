@@ -66,6 +66,25 @@ export async function getDb() {
         password TEXT,
         createdAt TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        customerName TEXT,
+        customerPhone TEXT,
+        customerAddress TEXT,
+        customerCpf TEXT,
+        items TEXT NOT NULL,
+        total REAL NOT NULL,
+        paymentMethod TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        pixCode TEXT,
+        pixQr TEXT,
+        pixTxId TEXT,
+        mpPaymentId TEXT,
+        createdAt TEXT NOT NULL,
+        paidAt TEXT,
+        confirmedAt TEXT
+      );
     `);
     // soft delete — lixeira (migração para DBs já existentes)
     for (const tbl of ["products","admins","discounts","accounts"]) {

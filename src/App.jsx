@@ -23,8 +23,15 @@ import {
   AlignJustify,
   ArrowUpRight,
   Check,
+  CreditCard,
+  Banknote,
+  QrCode,
+  Copy,
+  Loader2,
+  Package,
+  User,
 } from "lucide-react";
-import { getProducts, getSettings, getDiscounts, getDiscountedPrice, hydrateFromSql } from "./lib/adminStore";
+import { getProducts, getSettings, getDiscounts, getDiscountedPrice, hydrateFromSql, createOrder, verifyPixOrder } from "./lib/adminStore";
 import { DEFAULT_PRODUCTS } from "./lib/defaultData";
 
 function Instagram({ className, ...props }) {
@@ -292,6 +299,13 @@ export default function App() {
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [removedIngredients, setRemovedIngredients] = useState([]);
   const [observation, setObservation] = useState("");
+  // checkout direto no site
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState("form"); // form | pix | success
+  const [customer, setCustomer] = useState({ name: "", phone: "", address: "", cpf: "" });
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [verifyingPix, setVerifyingPix] = useState(false);
+  const [orderError, setOrderError] = useState(null);
   // dynamic store
   const [dynProducts, setDynProducts] = useState(() => {
     try { const p = getProducts(); return Array.isArray(p) && p.length ? p : DEFAULT_PRODUCTS; } catch { return DEFAULT_PRODUCTS; }
@@ -478,7 +492,6 @@ export default function App() {
       setTimeout(() => setToast(null), 2000);
       return;
     }
-    // sempre abre mesmo sem contato salvo — usa fallback do número padrão
     const rawNumber = (SETTINGS.whatsappNumber || WHATSAPP_NUMBER || "").replace(/\D/g, "") || WHATSAPP_NUMBER.replace(/\D/g,"");
     const lines = cart.map((item) => {
       const prod = EFFECTIVE_PRODUCTS.find((p) => p.id === item.id);
@@ -499,6 +512,104 @@ export default function App() {
       window.location.href = url;
     }
   };
+
+  // ===== CHECKOUT DIRETO NO SITE (com verificação PIX) =====
+  const handleOpenSiteCheckout = () => {
+    if (cart.length === 0) {
+      setToast("Seu carrinho está vazio!");
+      setTimeout(()=>setToast(null), 2000);
+      return;
+    }
+    setOrderError(null);
+    setCheckoutStep("form");
+    setIsCheckoutOpen(true);
+  };
+  const handleCreateOrder = async () => {
+    if (!customer.name.trim() || !customer.phone.trim()) {
+      setOrderError("Informe nome e telefone/WhatsApp");
+      return;
+    }
+    if (!customer.address.trim()) {
+      setOrderError("Informe endereço para entrega");
+      return;
+    }
+    if (customer.cpf && customer.cpf.replace(/\D/g,"").length !== 11) {
+      setOrderError("CPF deve ter 11 dígitos (ou deixe em branco)");
+      return;
+    }
+    setOrderError(null);
+    try {
+      setVerifyingPix(true);
+      const orderItems = cart.map(item => {
+        const prod = EFFECTIVE_PRODUCTS.find(p=>p.id===item.id);
+        return {
+          id: item.id,
+          name: prod ? prod.name : item.id,
+          qty: item.qty,
+          price: prod ? getDisplayPrice(prod) : 0,
+          extras: item.extras || [],
+          extrasPrice: item.extrasPrice || 0,
+          removed: item.removed || [],
+          observation: item.observation || "",
+        };
+      });
+      const payload = {
+        customerName: customer.name.trim(),
+        customerPhone: customer.phone.trim(),
+        customerAddress: customer.address.trim(),
+        customerCpf: customer.cpf.trim(),
+        items: orderItems,
+        total: cartTotal,
+        paymentMethod,
+      };
+      const order = await createOrder(payload);
+      setCurrentOrder(order);
+      if (paymentMethod === "pix") {
+        setCheckoutStep("pix");
+        setToast("Pedido criado! Pague o PIX e clique em Verificar");
+        setTimeout(()=>setToast(null), 3000);
+      } else {
+        // cartão/dinheiro entra como pending - admin confirma
+        setCheckoutStep("success");
+        setCart([]);
+        setToast(`Pedido #${order.id.slice(0,6).toUpperCase()} criado! Aguardando confirmação.`);
+        setTimeout(()=>setToast(null), 3500);
+      }
+    } catch (e) {
+      setOrderError(e.message || "Erro ao criar pedido");
+    } finally {
+      setVerifyingPix(false);
+    }
+  };
+  const handleVerifyPix = async (force=false) => {
+    if (!currentOrder) return;
+    setVerifyingPix(true);
+    setOrderError(null);
+    try {
+      const res = await verifyPixOrder(currentOrder.id, force);
+      if (res?.verified || res?.status==="paid" || res?.status==="confirmed") {
+        setCurrentOrder(res);
+        setCheckoutStep("success");
+        setCart([]);
+        setToast("✅ PIX confirmado! Pedido em preparo.");
+        setTimeout(()=>setToast(null), 3000);
+      } else {
+        setOrderError(res?.message || "PIX ainda não pago. Pague e tente novamente em alguns segundos.");
+        // atualiza order local com status
+        if (res) setCurrentOrder(res);
+      }
+    } catch (e) {
+      setOrderError(e.message || "Erro ao verificar PIX");
+    } finally {
+      setVerifyingPix(false);
+    }
+  };
+  // polling automático PIX a cada 7s
+  useEffect(() => {
+    if (checkoutStep !== "pix" || !currentOrder || currentOrder.status==="paid" || currentOrder.status==="confirmed") return;
+    const id = setInterval(()=> { handleVerifyPix(false); }, 7000);
+    return ()=> clearInterval(id);
+  }, [checkoutStep, currentOrder]);
 
   const handleCall = () => {
     const tel = SETTINGS.phoneTel || PHONE_TEL;
@@ -1079,26 +1190,141 @@ export default function App() {
                     <div className="text-[11px] font-black tracking-[0.12em] text-zinc-700">FORMA DE PAGAMENTO</div>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {[
-                        { id: "pix", label: "Pix" },
-                        { id: "card", label: "Cartão" },
-                        { id: "money", label: "Dinheiro" },
+                        { id: "pix", label: "Pix", icon: QrCode },
+                        { id: "card", label: "Cartão", icon: CreditCard },
+                        { id: "money", label: "Dinheiro", icon: Banknote },
                       ].map((m) => (
-                        <button key={m.id} onClick={() => setPaymentMethod(m.id)} className={`rounded-full px-3 py-2.5 text-xs font-black ring-1 transition ${paymentMethod === m.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
-                          {m.label}
+                        <button key={m.id} onClick={() => setPaymentMethod(m.id)} className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-black ring-1 transition ${paymentMethod === m.id ? "bg-zinc-900 text-white ring-zinc-900" : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50"}`}>
+                          <m.icon className="h-3.5 w-3.5" />{m.label}
                         </button>
                       ))}
                     </div>
-                    <div className="mt-2 text-center text-[11px] font-medium text-zinc-500">Selecionado: <span className="font-black text-zinc-900">{paymentMethod === "pix" ? "Pix (aprovação instantânea)" : paymentMethod === "card" ? "Cartão na entrega" : "Dinheiro — troco no WhatsApp"}</span></div>
+                    <div className="mt-2 text-center text-[11px] font-medium text-zinc-500">Selecionado: <span className="font-black text-zinc-900">{paymentMethod === "pix" ? "Pix — verificação antes de confirmar" : paymentMethod === "card" ? "Cartão na entrega" : "Dinheiro — troco na entrega"}</span></div>
                   </div>
 
-                  <button onClick={handleWhatsAppCheckout} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#25d366] py-3.5 text-sm font-black text-white shadow-[0_10px_30px_rgba(37,211,102,0.3)] hover:brightness-110 active:scale-[0.98]"><MessageCircle className="h-5 w-5 fill-white" />Finalizar pedido via WhatsApp</button>
+                  <button onClick={handleOpenSiteCheckout} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#e30613] py-3.5 text-sm font-black text-white shadow-[0_10px_30px_rgba(227,6,19,0.3)] hover:bg-[#b8050f] active:scale-[0.98]"><ShoppingBag className="h-5 w-5" />Pagar no site — {formatBRL(cartTotal)}</button>
+                  <div className="mt-1 text-center text-[11px] font-bold text-zinc-500">PIX verificado antes de confirmar • sem WhatsApp</div>
+                  <button onClick={handleWhatsAppCheckout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-black text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"><MessageCircle className="h-4 w-4" />Ou finalizar via WhatsApp</button>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <a href={`tel:${SETTINGS.phoneTel}`} className="flex items-center justify-center gap-1.5 rounded-full bg-white py-3 text-sm font-black text-zinc-900 ring-1 ring-zinc-300 hover:bg-zinc-900 hover:text-white hover:ring-zinc-900"><Phone className="h-4 w-4" />Ligar agora</a>
                     <a href={SETTINGS.ifoodUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 rounded-full border border-zinc-300 bg-white py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#ea1d2c] text-[10px] font-black text-white">iF</span>iFood</a>
                   </div>
-                  <div className="mt-2 text-center text-xs font-medium text-zinc-500">Seus dados não são salvos — o pedido abre direto no seu WhatsApp</div>
+                  <div className="mt-2 text-center text-xs font-medium text-zinc-500">Pedido salvo no sistema • admin vê forma de pagamento</div>
                 </div>
               )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* CHECKOUT DIRETO NO SITE — com verificação PIX */}
+      <AnimatePresence>
+        {isCheckoutOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsCheckoutOpen(false)} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 24, scale: 0.97 }} transition={{ type: "spring", damping: 28, stiffness: 300 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div className="flex max-h-[92vh] w-full max-w-[480px] flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.3)] ring-1 ring-zinc-200">
+                {/* header */}
+                <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-[#e30613] text-white"><Package className="h-5 w-5" /></span>
+                    <div>
+                      <div className="text-sm font-black leading-none text-zinc-900">Finalizar pedido</div>
+                      <div className="text-xs font-medium text-zinc-500">{checkoutStep === "form" ? "Seus dados" : checkoutStep === "pix" ? `PIX • ${formatBRL(cartTotal)}` : "Pedido confirmado!"}</div>
+                    </div>
+                  </div>
+                  <button onClick={() => setIsCheckoutOpen(false)} className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-900 hover:text-white"><X className="h-5 w-5" /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5">
+                  {checkoutStep === "form" && (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                        {paymentMethod === "pix" ? "🔒 PIX: pagamento verificado antes de confirmar. Não confirmamos sem o PIX cair." : paymentMethod === "card" ? "💳 Cartão será pago na entrega." : "💵 Dinheiro — troco na entrega."}
+                      </div>
+                      <div className="rounded-2xl bg-zinc-50 p-3 text-xs font-medium text-zinc-600">
+                        {cart.length} itens • {formatBRL(cartTotal)} • {paymentMethod === "pix" ? "PIX" : paymentMethod === "card" ? "Cartão" : "Dinheiro"}
+                      </div>
+                      <label className="space-y-1 block">
+                        <span className="text-xs font-black tracking-wide text-zinc-700 flex items-center gap-1.5"><User className="h-3.5 w-3.5"/>Nome completo *</span>
+                        <input value={customer.name} onChange={e=>setCustomer({...customer, name: e.target.value})} placeholder="Seu nome" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+                      </label>
+                      <label className="space-y-1 block">
+                        <span className="text-xs font-black tracking-wide text-zinc-700 flex items-center gap-1.5"><Phone className="h-3.5 w-3.5"/>WhatsApp / Telefone *</span>
+                        <input value={customer.phone} onChange={e=>setCustomer({...customer, phone: e.target.value})} placeholder="(48) 99999-9999" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+                      </label>
+                      <label className="space-y-1 block">
+                        <span className="text-xs font-black tracking-wide text-zinc-700 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5"/>Endereço completo *</span>
+                        <textarea value={customer.address} onChange={e=>setCustomer({...customer, address: e.target.value})} rows={2} placeholder="Rua, número, bairro, complemento" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+                      </label>
+                      <label className="space-y-1 block">
+                        <span className="text-xs font-black tracking-wide text-zinc-700">CPF (opcional p/ PIX)</span>
+                        <input value={customer.cpf} onChange={e=>setCustomer({...customer, cpf: e.target.value.replace(/\D/g,"").slice(0,11)})} placeholder="00000000000" className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-zinc-900" />
+                        <span className="text-[11px] text-zinc-500">Usado para gerar PIX no Mercado Pago (se configurado).</span>
+                      </label>
+                      {orderError && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700 ring-1 ring-red-200">{orderError}</div>}
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={()=>setIsCheckoutOpen(false)} className="flex-1 rounded-full bg-white py-3 text-sm font-black ring-1 ring-zinc-200">Voltar</button>
+                        <button onClick={handleCreateOrder} disabled={verifyingPix} className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-zinc-900 py-3 text-sm font-black text-white hover:bg-black disabled:opacity-60">
+                          {verifyingPix ? <Loader2 className="h-4 w-4 animate-spin"/> : paymentMethod==="pix" ? <QrCode className="h-4 w-4"/> : <Check className="h-4 w-4"/>}
+                          {paymentMethod==="pix" ? "Gerar PIX" : "Confirmar pedido"}
+                        </button>
+                      </div>
+                      <div className="text-center text-xs text-zinc-500">Ao confirmar você aceita os termos da loja. {paymentMethod==="pix" && "PIX será verificado antes de liberar o preparo."}</div>
+                    </div>
+                  )}
+
+                  {checkoutStep === "pix" && currentOrder && (
+                    <div className="space-y-4 text-center">
+                      <div className="rounded-2xl bg-zinc-900 p-4 text-white">
+                        <div className="text-xs font-black tracking-[0.12em] text-white/70">PEDIDO #{currentOrder.id.slice(0,6).toUpperCase()} • PIX • {formatBRL(currentOrder.total)}</div>
+                        <div className="mt-1 text-sm font-bold">Status: <span className={currentOrder.status==="paid"||currentOrder.status==="confirmed" ? "text-emerald-400" : "text-amber-300"}>{currentOrder.status==="pending_pix" ? "Aguardando pagamento" : currentOrder.status}</span></div>
+                      </div>
+                      <div className="grid place-items-center rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+                        <img src={currentOrder.pixQr} alt="QR PIX" className="h-56 w-56 rounded-xl object-contain ring-1 ring-zinc-200" onError={(e)=>{e.currentTarget.style.display='none'}} />
+                        <div className="mt-3 w-full rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                          <div className="text-[11px] font-black tracking-wide text-zinc-500">PIX COPIA E COLA</div>
+                          <div className="mt-1 break-all text-xs font-mono text-zinc-800">{currentOrder.pixCode}</div>
+                          <button onClick={()=>{ navigator.clipboard.writeText(currentOrder.pixCode); setToast("PIX copiado!"); setTimeout(()=>setToast(null),2000); }} className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-black ring-1 ring-zinc-200 hover:bg-zinc-900 hover:text-white"><Copy className="h-3.5 w-3.5"/>Copiar código</button>
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                        1) Pague no app do banco • 2) Volte e clique em “Já paguei, verificar” • Pedido só é confirmado após verificação.
+                      </div>
+                      {orderError && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700 ring-1 ring-red-200">{orderError}</div>}
+                      {currentOrder.status==="paid" || currentOrder.status==="confirmed" ? (
+                        <div className="rounded-xl bg-emerald-50 px-3 py-3 text-sm font-black text-emerald-700 ring-1 ring-emerald-200">✅ PIX confirmado! Seu pedido já está em preparo.</div>
+                      ) : (
+                        <button onClick={()=>handleVerifyPix(false)} disabled={verifyingPix} className="flex w-full items-center justify-center gap-2 rounded-full bg-[#25d366] py-3.5 text-sm font-black text-white hover:brightness-110 disabled:opacity-60">
+                          {verifyingPix ? <Loader2 className="h-4 w-4 animate-spin"/> : <QrCode className="h-4 w-4"/>}
+                          {verifyingPix ? "Verificando..." : "Já paguei, verificar PIX"}
+                        </button>
+                      )}
+                      <div className="text-xs text-zinc-500">Verificação automática a cada 7s • Em modo mock, admin pode confirmar no painel.</div>
+                      <button onClick={()=>setCheckoutStep("form")} className="w-full rounded-full py-2 text-sm font-bold text-zinc-500 hover:text-zinc-900">Editar dados</button>
+                    </div>
+                  )}
+
+                  {checkoutStep === "success" && currentOrder && (
+                    <div className="space-y-4 text-center">
+                      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-600"><Check className="h-8 w-8"/></div>
+                      <div className="font-display text-[22px] font-black leading-none">PEDIDO CONFIRMADO!</div>
+                      <div className="rounded-2xl bg-zinc-900 p-4 text-white text-left">
+                        <div className="text-xs font-black tracking-wide text-white/60">PEDIDO #{currentOrder.id.slice(0,6).toUpperCase()}</div>
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div><span className="font-bold text-zinc-400">Cliente:</span> {currentOrder.customerName} • {currentOrder.customerPhone}</div>
+                          <div><span className="font-bold text-zinc-400">Endereço:</span> {currentOrder.customerAddress}</div>
+                          <div><span className="font-bold text-zinc-400">Pagamento:</span> {currentOrder.paymentMethod==="pix" ? "PIX (verificado)" : currentOrder.paymentMethod==="card" ? "Cartão" : "Dinheiro"} • <span className="font-black text-emerald-400">{currentOrder.status.toUpperCase()}</span></div>
+                          <div><span className="font-bold text-zinc-400">Total:</span> {formatBRL(currentOrder.total)}</div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-zinc-600">Acompanhe seu pedido. Entraremos em contato via WhatsApp.</div>
+                      <button onClick={()=>{ setIsCheckoutOpen(false); setCurrentOrder(null); }} className="w-full rounded-full bg-zinc-900 py-3 text-sm font-black text-white">Fechar</button>
+                      <a href={`https://wa.me/${(SETTINGS.whatsappNumber||WHATSAPP_NUMBER).replace(/\D/g,"")}?text=${encodeURIComponent(`Olá! Meu pedido #${currentOrder.id.slice(0,6).toUpperCase()} foi pago via ${currentOrder.paymentMethod.toUpperCase()} no site. Pode confirmar?`)}`} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-full bg-[#25d366] py-3 text-sm font-black text-white"><MessageCircle className="h-4 w-4 fill-white"/>Falar no WhatsApp</a>
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.div>
           </>
         )}

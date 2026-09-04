@@ -386,6 +386,195 @@ app.delete("/api/trash/clear", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- PEDIDOS + PAGAMENTOS ---
+function rowToOrder(r) {
+  return {
+    id: r.id,
+    customerName: r.customerName,
+    customerPhone: r.customerPhone,
+    customerAddress: r.customerAddress,
+    customerCpf: r.customerCpf,
+    items: (()=>{ try { return JSON.parse(r.items); } catch { return []; } })(),
+    total: Number(r.total),
+    paymentMethod: r.paymentMethod,
+    status: r.status,
+    pixCode: r.pixCode,
+    pixQr: r.pixQr,
+    pixTxId: r.pixTxId,
+    mpPaymentId: r.mpPaymentId,
+    createdAt: r.createdAt,
+    paidAt: r.paidAt,
+    confirmedAt: r.confirmedAt,
+  };
+}
+function generateMockPix({ id, total }) {
+  // BR Code mock simplificado - apenas para demo. Em produção use EFI ou Mercado Pago
+  const amount = Number(total).toFixed(2);
+  const txId = `BOKA${id.slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  const pixKey = process.env.PIX_KEY || "48988452532";
+  // payload PIX EMV simplificado (não válido CRC real, apenas visual)
+  const pixCode = `00020126360014BR.GOV.BCB.PIX0114+55${pixKey.replace(/\D/g,"")}520400005303986540${amount.padStart(5,"0")}5802BR5913Boka Loka6008Tubarao62070503${txId.slice(0,3)}6304ABCD`;
+  // QR via api externa (cada pixCode gera QR único)
+  const pixQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`;
+  return { pixCode, pixQr, pixTxId: txId };
+}
+async function createMercadoPagoPix({ id, total, customerName, customerCpf, customerPhone }) {
+  const token = process.env.MP_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) return null;
+  try {
+    const email = `cliente_${id}@bokaloka.com`;
+    const res = await fetch("https://api.mercadopago.com/v1/payments", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "X-Idempotency-Key": id },
+      body: JSON.stringify({
+        transaction_amount: Number(Number(total).toFixed(2)),
+        description: `Pedido Boka Loka #${id}`,
+        payment_method_id: "pix",
+        payer: {
+          email,
+          first_name: customerName || "Cliente",
+          last_name: "Boka",
+          identification: customerCpf ? { type: "CPF", number: customerCpf.replace(/\D/g,"") } : undefined,
+        },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.warn("MP Pix erro", data);
+      return null;
+    }
+    const tx = data.point_of_interaction?.transaction_data;
+    return {
+      pixCode: tx?.qr_code || data.pixCode || null,
+      pixQr: tx?.qr_code_base64 ? `data:image/png;base64,${tx.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(tx?.qr_code || "")}`,
+      pixTxId: data.id?.toString() || null,
+      mpPaymentId: data.id?.toString() || null,
+      mpRaw: data,
+    };
+  } catch (e) {
+    console.warn("MP Pix fetch erro", e.message);
+    return null;
+  }
+}
+
+app.get("/api/orders", async (req, res) => {
+  const db = await getDb();
+  const rows = await db.all("SELECT * FROM orders ORDER BY datetime(createdAt) DESC");
+  res.json(rows.map(rowToOrder));
+});
+app.get("/api/orders/:id", async (req, res) => {
+  const db = await getDb();
+  const row = await db.get("SELECT * FROM orders WHERE id=?", req.params.id);
+  if (!row) return res.status(404).json({ error: "Pedido não encontrado" });
+  res.json(rowToOrder(row));
+});
+app.post("/api/orders", async (req, res) => {
+  const db = await getDb();
+  const { customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod } = req.body;
+  if (!items || !Array.isArray(items) || items.length===0) return res.status(400).json({ error: "Carrinho vazio" });
+  if (!customerName || !customerPhone) return res.status(400).json({ error: "Nome e telefone obrigatórios" });
+  const pm = (paymentMethod || "pix").toLowerCase();
+  if (!["pix","card","money"].includes(pm)) return res.status(400).json({ error: "Forma de pagamento inválida" });
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6).toUpperCase();
+  const now = new Date().toISOString();
+  let status = pm === "pix" ? "pending_pix" : "pending";
+  let pixCode = null, pixQr = null, pixTxId = null, mpPaymentId = null;
+  const calcTotal = Number(total) || 0;
+  if (pm === "pix") {
+    // tenta Mercado Pago real, fallback mock
+    const mp = await createMercadoPagoPix({ id, total: calcTotal, customerName, customerCpf, customerPhone });
+    if (mp && mp.pixCode) {
+      pixCode = mp.pixCode; pixQr = mp.pixQr; pixTxId = mp.pixTxId; mpPaymentId = mp.mpPaymentId;
+    } else {
+      const mock = generateMockPix({ id, total: calcTotal });
+      pixCode = mock.pixCode; pixQr = mock.pixQr; pixTxId = mock.pixTxId;
+    }
+  }
+  // para cartão/dinheiro entra como pending (admin confirma) - mas permite confirmar direto se quiser
+  if (pm !== "pix") status = "pending";
+  await db.run(
+    "INSERT INTO orders (id, customerName, customerPhone, customerAddress, customerCpf, items, total, paymentMethod, status, pixCode, pixQr, pixTxId, mpPaymentId, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    id, customerName.trim(), customerPhone.trim(), (customerAddress||"").trim(), (customerCpf||"").replace(/\D/g,""), JSON.stringify(items), calcTotal, pm, status, pixCode, pixQr, pixTxId, mpPaymentId, now
+  );
+  const row = await db.get("SELECT * FROM orders WHERE id=?", id);
+  res.status(201).json(rowToOrder(row));
+});
+app.post("/api/orders/:id/verify-pix", async (req, res) => {
+  const db = await getDb();
+  const row = await db.get("SELECT * FROM orders WHERE id=?", req.params.id);
+  if (!row) return res.status(404).json({ error: "Pedido não encontrado" });
+  const order = rowToOrder(row);
+  if (order.paymentMethod !== "pix") return res.json({ ...order, verified: order.status === "paid" || order.status === "confirmed", message: "Pedido não é PIX" });
+  if (order.status === "paid" || order.status === "confirmed") return res.json({ ...order, verified: true, message: "Já pago" });
+  // tenta verificar no Mercado Pago se houver mpPaymentId
+  const token = process.env.MP_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (token && order.mpPaymentId) {
+    try {
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const data = await r.json();
+      if (data.status === "approved") {
+        const paidAt = new Date().toISOString();
+        await db.run("UPDATE orders SET status='paid', paidAt=? WHERE id=?", paidAt, order.id);
+        const updated = await db.get("SELECT * FROM orders WHERE id=?", order.id);
+        return res.json({ ...rowToOrder(updated), verified: true, message: "PIX confirmado (Mercado Pago)" });
+      }
+      return res.json({ ...order, verified: false, mpStatus: data.status, message: "PIX ainda não pago" });
+    } catch (e) {
+      return res.json({ ...order, verified: false, message: "Erro ao consultar Mercado Pago", error: e.message });
+    }
+  }
+  // MOCK: verifica se passou tempo mínimo ou header X-Mock-Paid=true (para teste admin)
+  // Em produção real, só marcará pago via webhook MP ou confirmação manual admin
+  // Para demo: se query ?forcePaid=true ou header, marca pago. Caso contrário, retorna pendente e exige confirmação.
+  const forcePaid = req.query.forcePaid === "true" || req.headers["x-mock-paid"] === "true" || req.body?.forcePaid === true;
+  // Também permite modo demo auto após 15s se env DEMO_PIX_AUTO_PAID=true
+  const autoDemo = process.env.DEMO_PIX_AUTO_PAID === "true";
+  const elapsed = Date.now() - new Date(order.createdAt).getTime();
+  if (forcePaid || (autoDemo && elapsed > 15000)) {
+    const paidAt = new Date().toISOString();
+    await db.run("UPDATE orders SET status='paid', paidAt=? WHERE id=?", paidAt, order.id);
+    const updated = await db.get("SELECT * FROM orders WHERE id=?", order.id);
+    return res.json({ ...rowToOrder(updated), verified: true, message: "PIX verificado (MOCK - pago)" });
+  }
+  return res.json({ ...order, verified: false, message: "PIX ainda não pago. Pague o QR e clique em Verificar. (Mock: só aprova se admin confirmar ou DEMO_PIX_AUTO_PAID)" });
+});
+app.put("/api/orders/:id/status", async (req, res) => {
+  const db = await getDb();
+  const { status } = req.body;
+  const allowed = ["pending","pending_pix","paid","confirmed","cancelled","failed"];
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido" });
+  const row = await db.get("SELECT * FROM orders WHERE id=?", req.params.id);
+  if (!row) return res.status(404).json({ error: "Pedido não encontrado" });
+  const now = new Date().toISOString();
+  let paidAt = row.paidAt, confirmedAt = row.confirmedAt;
+  if (status === "paid" && !paidAt) paidAt = now;
+  if (status === "confirmed" && !confirmedAt) { confirmedAt = now; if (!paidAt && row.paymentMethod==="pix") paidAt = now; }
+  await db.run("UPDATE orders SET status=?, paidAt=?, confirmedAt=? WHERE id=?", status, paidAt, confirmedAt, req.params.id);
+  const updated = await db.get("SELECT * FROM orders WHERE id=?", req.params.id);
+  res.json(rowToOrder(updated));
+});
+app.post("/api/webhook/mercadopago", async (req, res) => {
+  // Webhook Mercado Pago - recebe notificação de pagamento
+  try {
+    const { data, type } = req.body || {};
+    if (type === "payment" && data?.id) {
+      const token = process.env.MP_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (token) {
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, { headers: { "Authorization": `Bearer ${token}` } });
+        const pay = await r.json();
+        if (pay.status === "approved" && pay.id) {
+          const db = await getDb();
+          const row = await db.get("SELECT * FROM orders WHERE mpPaymentId=?", String(pay.id));
+          if (row) {
+            await db.run("UPDATE orders SET status='paid', paidAt=? WHERE id=?", new Date().toISOString(), row.id);
+          }
+        }
+      }
+    }
+  } catch {}
+  res.json({ ok: true });
+});
+
 // health
 app.get("/api/health", (req, res) => res.json({ ok: true, db: "sqlite" }));
 
